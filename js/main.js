@@ -1,0 +1,757 @@
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { BUILD_SWATCHES, CAMERA_PRESETS, createLegoBrickTexture, showToast } from './config.js';
+import { SoundEngine } from './audio.js';
+import { buildIslandWorld } from './worldBuilder.js';
+import { createLivingEntities } from './livingEntities.js';
+import { createAtmosphere } from './atmosphere.js';
+import { LegoBuildSystem } from './buildSystem.js';
+
+// =========================================================================
+// 1. RENDERER, SCENE, CAMERA & ORBIT CONTROLS
+// =========================================================================
+const container = document.getElementById('canvas-container');
+const renderer = new THREE.WebGLRenderer({
+  antialias: true,
+  powerPreference: 'high-performance',
+  preserveDrawingBuffer: true, // Enables crisp Postcard PNG snapshots
+});
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.08;
+container.appendChild(renderer.domElement);
+
+const scene = new THREE.Scene();
+scene.fog = new THREE.FogExp2(0x9bd2f5, 0.0046);
+
+const camera = new THREE.PerspectiveCamera(42, window.innerWidth / window.innerHeight, 0.5, 420);
+camera.position.set(...CAMERA_PRESETS.overview.pos);
+
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.enableDamping = true;
+controls.dampingFactor = 0.06;
+controls.maxPolarAngle = Math.PI * 0.478;
+controls.minPolarAngle = 0.14;
+controls.minDistance = 10;
+controls.maxDistance = 85;
+controls.target.set(...CAMERA_PRESETS.overview.target);
+controls.autoRotate = true;
+controls.autoRotateSpeed = 0.45;
+
+// =========================================================================
+// 2. CORE SYSTEMS INITIALIZATION
+// =========================================================================
+const audio = new SoundEngine();
+const legoBrickTex = createLegoBrickTexture();
+const world = buildIslandWorld(scene, legoBrickTex);
+
+// Particle Burst Engine (Fireworks, Click Confetti, Water Splashes, Treasure Gold, Volcano Eruption)
+const dummy = new THREE.Object3D();
+const tmpColor = new THREE.Color();
+const particleGeo = new THREE.BoxGeometry(1, 1, 1);
+
+const burstMax = 380;
+const burstMesh = new THREE.InstancedMesh(particleGeo, new THREE.MeshBasicMaterial({ color: 0xffffff }), burstMax);
+burstMesh.frustumCulled = false;
+const burstParticles = [];
+for (let i = 0; i < burstMax; i++) {
+  burstParticles.push({
+    active: false,
+    pos: new THREE.Vector3(0, -100, 0),
+    vel: new THREE.Vector3(),
+    life: 0,
+    maxLife: 1,
+    size: 0.24,
+    color: new THREE.Color(0xffffff),
+    gravity: 9.8,
+  });
+  dummy.position.set(0, -100, 0);
+  dummy.scale.set(0.001, 0.001, 0.001);
+  dummy.updateMatrix();
+  burstMesh.setMatrixAt(i, dummy.matrix);
+  burstMesh.setColorAt(i, tmpColor.setHex(0xffffff));
+}
+burstMesh.instanceMatrix.needsUpdate = true;
+burstMesh.instanceColor.needsUpdate = true;
+scene.add(burstMesh);
+
+const fireworkFlash = new THREE.PointLight(0xffaa55, 0, 42);
+scene.add(fireworkFlash);
+
+const FIREWORK_COLORS = [0xff5e7e, 0xffd166, 0x4cc9f0, 0x72efdd, 0xb388ff, 0xff9f43, 0x69f0ae];
+let burstCursor = 0;
+
+function spawnBurst(origin, count = 42, speed = 8.5, { isFirework = false, singleColor = null, gravity = 9.8 } = {}) {
+  const c1 = singleColor ?? FIREWORK_COLORS[Math.floor(Math.random() * FIREWORK_COLORS.length)];
+  const c2 = singleColor ?? FIREWORK_COLORS[Math.floor(Math.random() * FIREWORK_COLORS.length)];
+  for (let i = 0; i < count; i++) {
+    const p = burstParticles[burstCursor];
+    burstCursor = (burstCursor + 1) % burstMax;
+    p.active = true;
+    p.pos.copy(origin);
+    const theta = Math.random() * Math.PI * 2;
+    const phi = isFirework ? Math.acos(2 * Math.random() - 1) : Math.random() * Math.PI * 0.42;
+    const spd = speed * (0.45 + Math.random() * 0.65);
+    p.vel.set(
+      Math.sin(phi) * Math.cos(theta) * spd,
+      Math.cos(phi) * spd + (isFirework ? 2.0 : 3.8),
+      Math.sin(phi) * Math.sin(theta) * spd
+    );
+    p.life = 0;
+    p.maxLife = isFirework ? 1.15 + Math.random() * 0.7 : 0.65 + Math.random() * 0.4;
+    p.size = isFirework ? 0.24 + Math.random() * 0.16 : 0.17 + Math.random() * 0.12;
+    p.color.setHex(i % 2 === 0 ? c1 : c2);
+    p.gravity = gravity;
+  }
+  if (isFirework) {
+    fireworkFlash.position.copy(origin);
+    fireworkFlash.color.setHex(c1);
+    fireworkFlash.intensity = 18;
+    audio.playFireworkBoom();
+  }
+}
+
+function launchSkyFirework() {
+  const rx = (Math.random() - 0.5) * 24;
+  const rz = (Math.random() - 0.5) * 20;
+  const ry = 16 + Math.random() * 8;
+  spawnBurst(new THREE.Vector3(rx, ry, rz), 54, 10.5, { isFirework: true });
+}
+
+function onWaterSplash(pos, count, speed) {
+  spawnBurst(pos, count, speed, { singleColor: 0xdff6ff, gravity: 11.5 });
+}
+
+function triggerScreenFlash(opacity = 0.55) {
+  const flash = document.getElementById('screen-flash');
+  flash.style.opacity = String(opacity);
+  setTimeout(() => { flash.style.opacity = '0'; }, 90);
+}
+
+const entities = createLivingEntities(scene, world, legoBrickTex, onWaterSplash);
+const atmosphere = createAtmosphere(scene, world, entities, () => {
+  triggerScreenFlash(0.32);
+  audio.playThunder();
+});
+
+const statBricks = document.getElementById('stat-bricks');
+const statStuds = document.getElementById('stat-studs');
+const statBuilt = document.getElementById('stat-built');
+
+function updateBrickCounters(userCount) {
+  statBricks.textContent = `🧱 ${(world.baseBrickCount + userCount).toLocaleString()} 块`;
+  statStuds.textContent = `⚪ ${(world.baseStudCount + userCount).toLocaleString()} 凸点`;
+  statBuilt.textContent = `已拼 ${userCount} 块`;
+}
+
+const buildSystem = new LegoBuildSystem(
+  scene,
+  world,
+  legoBrickTex,
+  audio,
+  (pos, cnt, spd, col) => spawnBurst(pos, cnt, spd, { singleColor: col }),
+  updateBrickCounters
+);
+updateBrickCounters(buildSystem.getCount());
+
+// =========================================================================
+// 3. CONTINUOUS ENVIRONMENTAL PARTICLES (Waterfall, Smoke, Campfire, Volcano Lava)
+// =========================================================================
+const waterfallCount = 56;
+const waterfallMesh = new THREE.InstancedMesh(
+  particleGeo,
+  new THREE.MeshStandardMaterial({ color: 0xbef4ff, roughness: 0.2, transparent: true, opacity: 0.88 }),
+  waterfallCount
+);
+const waterfallData = Array.from({ length: waterfallCount }, () => ({
+  t: Math.random(),
+  xOff: (Math.random() - 0.5) * 0.82,
+  zOff: (Math.random() - 0.5) * 0.35,
+  speed: 0.42 + Math.random() * 0.25,
+  size: 0.22 + Math.random() * 0.22,
+}));
+scene.add(waterfallMesh);
+
+const smokeCount = 28;
+const smokeMesh = new THREE.InstancedMesh(
+  particleGeo,
+  new THREE.MeshStandardMaterial({ color: 0xeef3f8, roughness: 1.0, transparent: true, opacity: 0.62 }),
+  smokeCount
+);
+const smokeData = Array.from({ length: smokeCount }, (_, i) => ({
+  origin: world.chimneyPositions[i % world.chimneyPositions.length],
+  t: Math.random(),
+  speed: 0.14 + Math.random() * 0.07,
+  driftX: 0.6 + Math.random() * 0.6,
+  driftZ: -0.3 + Math.random() * 0.6,
+}));
+scene.add(smokeMesh);
+
+const fireCount = 26;
+const fireMesh = new THREE.InstancedMesh(particleGeo, new THREE.MeshBasicMaterial({ color: 0xffffff }), fireCount);
+const fireData = Array.from({ length: fireCount }, () => ({
+  t: Math.random(),
+  speed: 0.75 + Math.random() * 0.65,
+  angle: Math.random() * Math.PI * 2,
+  rad: Math.random() * 0.34,
+}));
+scene.add(fireMesh);
+
+// Volcano Eruption Lava Bombs & Plume
+const lavaCount = 46;
+const lavaMesh = new THREE.InstancedMesh(particleGeo, new THREE.MeshBasicMaterial({ color: 0xffffff }), lavaCount);
+lavaMesh.visible = false;
+const lavaData = Array.from({ length: lavaCount }, () => ({
+  t: Math.random(),
+  speed: 0.38 + Math.random() * 0.32,
+  vx: (Math.random() - 0.5) * 5.2,
+  vz: (Math.random() - 0.5) * 5.2,
+  vy: 7.5 + Math.random() * 5.5,
+  size: 0.28 + Math.random() * 0.24,
+}));
+scene.add(lavaMesh);
+
+// =========================================================================
+// 4. APPLICATION STATE & CAMERA FLY-TO
+// =========================================================================
+let timeOfDay = 10.2;
+let isPlayingTime = true;
+let weather = 'clear';      // clear | rain | storm | snow
+let volcanoMode = false;
+let auroraEnabled = true;
+let appMode = 'explore';    // explore | build | sail
+let snowAccumulation = 0;
+let lastAppliedSnow = 0;
+let foundChests = 0;
+
+const keys = { forward: false, backward: false, left: false, right: false };
+
+let camAnim = null;
+function flyToPreset(name) {
+  if (appMode === 'sail') setAppMode('explore');
+  const p = CAMERA_PRESETS[name];
+  if (!p) return;
+
+  let endPos = new THREE.Vector3(...p.pos);
+  let endTarget = new THREE.Vector3(...p.target);
+  if (name === 'balloon') {
+    const bp = entities.hotAirBalloon.position;
+    endTarget = bp.clone().add(new THREE.Vector3(0, 2.5, 0));
+    endPos = bp.clone().add(new THREE.Vector3(12, 6, 14));
+  }
+
+  camAnim = {
+    startPos: camera.position.clone(),
+    endPos,
+    startTarget: controls.target.clone(),
+    endTarget,
+    progress: 0,
+    duration: 1.0,
+  };
+  document.querySelectorAll('#camera-presets .chip-btn').forEach((btn) => {
+    btn.classList.toggle('active', btn.dataset.cam === name);
+  });
+}
+
+controls.addEventListener('start', () => {
+  camAnim = null;
+});
+
+// =========================================================================
+// 5. MODE SWITCHING (Explore / Build / Sail)
+// =========================================================================
+const buildBar = document.getElementById('build-bar');
+const sailBar = document.getElementById('sail-bar');
+const statSpeed = document.getElementById('stat-speed');
+const statChests = document.getElementById('stat-chests');
+
+function setAppMode(nextMode) {
+  appMode = nextMode;
+  document.querySelectorAll('.mode-tab').forEach((btn) => {
+    btn.classList.toggle('active', btn.dataset.mode === nextMode);
+  });
+
+  buildSystem.setActive(nextMode === 'build');
+  buildBar.classList.toggle('hidden', nextMode !== 'build');
+  sailBar.classList.toggle('hidden', nextMode !== 'sail');
+  container.classList.toggle('build-cursor', nextMode === 'build');
+
+  if (nextMode === 'build') {
+    controls.autoRotate = false;
+    document.getElementById('btn-rotate').classList.remove('active');
+    showToast('🧱 拼装模式：左键点击积木面叠放，右键拆除，支持自动保存！');
+  } else if (nextMode === 'sail') {
+    controls.autoRotate = false;
+    document.getElementById('btn-rotate').classList.remove('active');
+    camAnim = null;
+    showToast('⛵ 航海模式已开启！使用 WASD / 方向键亲自掌舵');
+  }
+}
+
+// Populate Build Swatches
+const swatchContainer = document.getElementById('build-swatches');
+BUILD_SWATCHES.forEach((sw, idx) => {
+  const btn = document.createElement('button');
+  btn.className = `brick-swatch${idx === 0 ? ' active' : ''}${sw.emissive ? ' glow-swatch' : ''}`;
+  btn.style.background = sw.css;
+  btn.title = sw.name;
+  btn.addEventListener('click', () => {
+    buildSystem.setSwatch(sw);
+    swatchContainer.querySelectorAll('.brick-swatch').forEach((el) => el.classList.remove('active'));
+    btn.classList.add('active');
+  });
+  swatchContainer.appendChild(btn);
+});
+
+// =========================================================================
+// 6. INTERACTION: RAYCASTING (Chests, Build Mode, Fun Confetti Clicks)
+// =========================================================================
+const raycaster = new THREE.Raycaster();
+const pointer = new THREE.Vector2();
+let pointerDown = { x: 0, y: 0, button: 0 };
+
+function updatePointer(e) {
+  pointer.x = (e.clientX / window.innerWidth) * 2 - 1;
+  pointer.y = -(e.clientY / window.innerHeight) * 2 + 1;
+  raycaster.setFromCamera(pointer, camera);
+}
+
+renderer.domElement.addEventListener('pointermove', (e) => {
+  if (appMode === 'build') {
+    updatePointer(e);
+    buildSystem.updateHover(raycaster);
+  }
+});
+
+renderer.domElement.addEventListener('pointerdown', (e) => {
+  pointerDown = { x: e.clientX, y: e.clientY, button: e.button };
+});
+
+renderer.domElement.addEventListener('contextmenu', (e) => {
+  if (appMode === 'build') e.preventDefault();
+});
+
+renderer.domElement.addEventListener('pointerup', (e) => {
+  const moveDist = Math.hypot(e.clientX - pointerDown.x, e.clientY - pointerDown.y);
+  if (moveDist > 6) return;
+  updatePointer(e);
+
+  // Build Mode: Left click places brick, Right click removes user brick
+  if (appMode === 'build') {
+    if (e.button === 0) {
+      buildSystem.updateHover(raycaster);
+      buildSystem.placeBrickAtHover();
+    } else if (e.button === 2) {
+      buildSystem.removeBrickByRay(raycaster);
+    }
+    return;
+  }
+
+  if (e.button !== 0) return;
+
+  // Check Hidden Treasure Chests first!
+  const chestHits = raycaster.intersectObjects(world.chestHitMeshes, false);
+  if (chestHits.length > 0) {
+    const idx = chestHits[0].object.userData.chestIndex;
+    const chest = world.chests[idx];
+    if (chest && !chest.opened) {
+      chest.opened = true;
+      foundChests++;
+      statChests.textContent = `💎 宝箱 ${foundChests}/5`;
+      audio.playTreasureFanfare();
+      spawnBurst(chest.worldPos, 48, 8.2, { singleColor: 0xffd23f });
+      if (foundChests === world.chests.length) {
+        showToast(`🏆 恭喜找齐全部 5 个乐高秘宝！盛大烟花秀开启！`);
+        for (let i = 0; i < 6; i++) setTimeout(launchSkyFirework, i * 320);
+      } else {
+        showToast(`💎 发现「${chest.name}」！（${foundChests}/5）`);
+      }
+      return;
+    }
+  }
+
+  // Otherwise spawn playful voxel confetti / water splash where clicked
+  const hits = raycaster.intersectObjects([world.brickMesh, atmosphere.oceanMesh], false);
+  if (hits.length > 0) {
+    const pt = hits[0].point.clone();
+    pt.y += 0.55;
+    const isWater = hits[0].object === atmosphere.oceanMesh;
+    spawnBurst(pt, 24, 5.8, isWater ? { singleColor: 0xbff4ff } : {});
+    if (!isWater) audio.playBrickSnap();
+  }
+});
+
+// Keyboard shortcuts (WASD Sail Mode + Space Horn + Ctrl+Z Undo)
+window.addEventListener('keydown', (e) => {
+  if (e.code === 'KeyW' || e.code === 'ArrowUp') keys.forward = true;
+  if (e.code === 'KeyS' || e.code === 'ArrowDown') keys.backward = true;
+  if (e.code === 'KeyA' || e.code === 'ArrowLeft') keys.left = true;
+  if (e.code === 'KeyD' || e.code === 'ArrowRight') keys.right = true;
+  if (e.code === 'Space' && appMode === 'sail') {
+    e.preventDefault();
+    triggerBoatHorn();
+  }
+  if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z' && appMode === 'build') {
+    e.preventDefault();
+    buildSystem.undo();
+  }
+});
+
+window.addEventListener('keyup', (e) => {
+  if (e.code === 'KeyW' || e.code === 'ArrowUp') keys.forward = false;
+  if (e.code === 'KeyS' || e.code === 'ArrowDown') keys.backward = false;
+  if (e.code === 'KeyA' || e.code === 'ArrowLeft') keys.left = false;
+  if (e.code === 'KeyD' || e.code === 'ArrowRight') keys.right = false;
+});
+
+function triggerBoatHorn() {
+  audio.playBoatHorn();
+  const flarePos = entities.sailboat.position.clone().add(new THREE.Vector3(0, 6.2, 0));
+  spawnBurst(flarePos, 36, 7.8, { isFirework: true });
+}
+
+// =========================================================================
+// 7. POSTCARD PNG SNAPSHOT EXPORT
+// =========================================================================
+function capturePostcard() {
+  triggerScreenFlash(0.65);
+  audio.playBrickSnap();
+  renderer.render(scene, camera);
+
+  const src = renderer.domElement;
+  const out = document.createElement('canvas');
+  out.width = src.width;
+  out.height = src.height;
+  const ctx = out.getContext('2d');
+  ctx.drawImage(src, 0, 0);
+
+  // Subtle postcard frame & watermark badge
+  const pad = Math.round(out.width * 0.025);
+  ctx.strokeStyle = 'rgba(255,255,255,0.45)';
+  ctx.lineWidth = Math.max(3, Math.round(out.width * 0.004));
+  ctx.strokeRect(pad, pad, out.width - pad * 2, out.height - pad * 2);
+
+  const fontSize = Math.max(18, Math.round(out.width * 0.018));
+  ctx.font = `700 ${fontSize}px "PingFang SC", "Microsoft YaHei", sans-serif`;
+  ctx.fillStyle = 'rgba(15, 22, 36, 0.62)';
+  const label = `🏝️ 乐高体素海岛 · ${document.getElementById('clock-label').textContent}`;
+  const tw = ctx.measureText(label).width;
+  const bx = out.width - pad - tw - 28;
+  const by = out.height - pad - fontSize - 24;
+  ctx.fillRect(bx, by, tw + 24, fontSize + 18);
+  ctx.fillStyle = '#ffffff';
+  ctx.fillText(label, bx + 12, by + fontSize + 2);
+
+  const link = document.createElement('a');
+  link.download = `voxel-lego-island-${Date.now()}.png`;
+  link.href = out.toDataURL('image/png');
+  link.click();
+  showToast('📸 高清海岛明信片已保存到下载目录！');
+}
+
+// =========================================================================
+// 8. UI CONTROLS BINDING
+// =========================================================================
+const timeSlider = document.getElementById('time-slider');
+const clockLabel = document.getElementById('clock-label');
+const btnPlay = document.getElementById('btn-play');
+const btnAudio = document.getElementById('btn-audio');
+const btnVolcano = document.getElementById('btn-volcano');
+const btnAurora = document.getElementById('btn-aurora');
+const btnStuds = document.getElementById('btn-studs');
+const btnRotate = document.getElementById('btn-rotate');
+const btnZen = document.getElementById('btn-zen');
+const hud = document.getElementById('hud');
+
+btnAurora.classList.add('aurora-active');
+
+document.querySelectorAll('.mode-tab').forEach((btn) => {
+  btn.addEventListener('click', () => setAppMode(btn.dataset.mode));
+});
+
+btnPlay.addEventListener('click', () => {
+  isPlayingTime = !isPlayingTime;
+  btnPlay.textContent = isPlayingTime ? '⏸' : '▶';
+});
+
+timeSlider.addEventListener('input', (e) => {
+  timeOfDay = parseFloat(e.target.value);
+  isPlayingTime = false;
+  btnPlay.textContent = '▶';
+});
+
+document.querySelectorAll('[data-time]').forEach((btn) => {
+  btn.addEventListener('click', () => {
+    timeOfDay = parseFloat(btn.dataset.time);
+    timeSlider.value = timeOfDay.toFixed(2);
+  });
+});
+
+document.querySelectorAll('#weather-presets .chip-btn').forEach((btn) => {
+  btn.addEventListener('click', () => {
+    weather = btn.dataset.weather;
+    document.querySelectorAll('#weather-presets .chip-btn').forEach((b) => b.classList.toggle('active', b === btn));
+    const names = { clear: '☀️ 天气放晴啦', rain: '🌧️ 下起细雨了', storm: '⛈️ 雷暴来袭！注意闪电', snow: '❄️ 飘起体素雪花，海岛正在染白…' };
+    showToast(names[weather]);
+  });
+});
+
+document.querySelectorAll('#camera-presets .chip-btn').forEach((btn) => {
+  btn.addEventListener('click', () => flyToPreset(btn.dataset.cam));
+});
+
+btnAudio.addEventListener('click', () => {
+  const on = audio.toggle();
+  btnAudio.innerHTML = on ? '🔊 <span class="label">音效</span>' : '🔇 <span class="label">音效</span>';
+  btnAudio.classList.toggle('active', on);
+  if (on) showToast('🔊 已开启海浪、营火与乐高积木实时合成音效');
+});
+
+btnVolcano.addEventListener('click', () => {
+  volcanoMode = !volcanoMode;
+  lavaMesh.visible = volcanoMode;
+  btnVolcano.classList.toggle('volcano-active', volcanoMode);
+  world.updateSurfaceTheme(volcanoMode, snowAccumulation);
+  showToast(volcanoMode ? '🌋 活火山苏醒！熔岩正在喷发（夜晚更震撼）' : '🏔️ 已恢复宁静的雪顶山峰');
+});
+
+btnAurora.addEventListener('click', () => {
+  auroraEnabled = !auroraEnabled;
+  btnAurora.classList.toggle('active', auroraEnabled);
+  btnAurora.classList.toggle('aurora-active', auroraEnabled);
+  showToast(auroraEnabled ? '🌌 夜空极光与流星雨已开启' : '🌌 已关闭极光与流星雨');
+});
+
+document.getElementById('btn-firework').addEventListener('click', () => {
+  launchSkyFirework();
+  setTimeout(launchSkyFirework, 260);
+});
+
+document.getElementById('btn-photo').addEventListener('click', capturePostcard);
+
+btnStuds.addEventListener('click', () => {
+  world.studMesh.visible = !world.studMesh.visible;
+  buildSystem.setStudsVisible(world.studMesh.visible);
+  btnStuds.classList.toggle('active', world.studMesh.visible);
+});
+
+btnRotate.addEventListener('click', () => {
+  controls.autoRotate = !controls.autoRotate;
+  btnRotate.classList.toggle('active', controls.autoRotate);
+});
+
+btnZen.addEventListener('click', () => {
+  const isZen = hud.classList.toggle('zen');
+  btnZen.classList.toggle('active', isZen);
+});
+
+document.getElementById('btn-build-undo').addEventListener('click', () => buildSystem.undo());
+document.getElementById('btn-build-clear').addEventListener('click', () => {
+  if (buildSystem.getCount() > 0) {
+    buildSystem.clearAll();
+    showToast('🗑️ 已清空所有自建乐高积木');
+  }
+});
+
+document.getElementById('btn-sail-horn').addEventListener('click', triggerBoatHorn);
+document.getElementById('btn-sail-exit').addEventListener('click', () => {
+  setAppMode('explore');
+  flyToPreset('overview');
+});
+
+window.addEventListener('resize', () => {
+  camera.aspect = window.innerWidth / window.innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(window.innerWidth, window.innerHeight);
+});
+
+function formatClock(t) {
+  const wrapped = ((t % 24) + 24) % 24;
+  const hrs = Math.floor(wrapped);
+  const mins = Math.floor((wrapped - hrs) * 60);
+  const hh = String(hrs).padStart(2, '0');
+  const mm = String(mins).padStart(2, '0');
+  let icon = '☀️', tag = '正午';
+  if (wrapped < 5.2 || wrapped >= 20.0) { icon = '🌙'; tag = '星空'; }
+  else if (wrapped < 7.5) { icon = '🌅'; tag = '黎明'; }
+  else if (wrapped < 11.2) { icon = '🌤️'; tag = '上午'; }
+  else if (wrapped < 15.8) { icon = '☀️'; tag = '正午'; }
+  else if (wrapped < 18.8) { icon = '🌇'; tag = '黄昏'; }
+  else { icon = '🌆'; tag = '暮色'; }
+  return `${icon} ${hh}:${mm} ${tag}`;
+}
+
+// =========================================================================
+// 9. MAIN 60FPS ANIMATION LOOP
+// =========================================================================
+const clock = new THREE.Clock();
+
+function animate() {
+  requestAnimationFrame(animate);
+  const dt = Math.min(clock.getDelta(), 0.05);
+  const elapsed = clock.elapsedTime;
+
+  if (isPlayingTime) {
+    timeOfDay = (timeOfDay + dt * 0.32) % 24;
+    timeSlider.value = timeOfDay.toFixed(2);
+  }
+  clockLabel.textContent = formatClock(timeOfDay);
+
+  // Smooth winter snow accumulation on terrain & roofs
+  const targetSnow = weather === 'snow' ? 1.0 : 0.0;
+  snowAccumulation += (targetSnow - snowAccumulation) * Math.min(1, dt * 0.65);
+  if (Math.abs(snowAccumulation - lastAppliedSnow) > 0.025) {
+    lastAppliedSnow = snowAccumulation;
+    world.updateSurfaceTheme(volcanoMode, snowAccumulation);
+  }
+
+  const nightFactor = atmosphere.update(dt, elapsed, { timeOfDay, weather, auroraEnabled, volcanoMode });
+  audio.updateAmbient(dt, weather, nightFactor);
+  entities.update(dt, elapsed, { nightFactor, weather, sailMode: appMode === 'sail', keys });
+
+  // Sail mode third-person chase camera
+  if (appMode === 'sail') {
+    const b = entities.boatState;
+    const chaseDist = 11.5;
+    const desiredCam = new THREE.Vector3(
+      b.x - Math.sin(b.heading) * chaseDist,
+      6.8,
+      b.z - Math.cos(b.heading) * chaseDist
+    );
+    const desiredTarget = new THREE.Vector3(b.x, 2.5, b.z);
+    camera.position.lerp(desiredCam, Math.min(1, dt * 4.2));
+    controls.target.lerp(desiredTarget, Math.min(1, dt * 6.0));
+    statSpeed.textContent = `航速 ${(Math.abs(b.speed) * 1.4).toFixed(1)} 节`;
+  }
+
+  // Waterfall cascade foam
+  for (let i = 0; i < waterfallCount; i++) {
+    const w = waterfallData[i];
+    w.t = (w.t + dt * w.speed) % 1.0;
+    const wy = 7.4 - w.t * 5.45;
+    const wz = -3.55 + w.t * 0.95 + Math.sin(w.t * Math.PI) * 0.24 + w.zOff * 0.35;
+    const wx = 7.5 + w.xOff * 1.95;
+    const sc = w.t > 0.82 ? w.size * (1.2 + (w.t - 0.82) * 5.2) : w.size * 1.15;
+    dummy.position.set(wx, wy, wz);
+    dummy.scale.set(sc, sc * (w.t > 0.82 ? 0.55 : 1.55), sc);
+    dummy.rotation.set(0, 0, 0);
+    dummy.updateMatrix();
+    waterfallMesh.setMatrixAt(i, dummy.matrix);
+  }
+  waterfallMesh.instanceMatrix.needsUpdate = true;
+
+  // Chimney smoke
+  for (let i = 0; i < smokeCount; i++) {
+    const s = smokeData[i];
+    s.t = (s.t + dt * s.speed) % 1.0;
+    const sx = s.origin.x + s.t * s.driftX + Math.sin(elapsed * 1.5 + i) * 0.14;
+    const sy = s.origin.y + s.t * 4.4;
+    const sz = s.origin.z + s.t * s.driftZ;
+    const sc = Math.sin(s.t * Math.PI) * 0.48;
+    dummy.position.set(sx, sy, sz);
+    dummy.scale.set(sc, sc, sc);
+    dummy.rotation.set(s.t * 2, s.t * 1.5, 0);
+    dummy.updateMatrix();
+    smokeMesh.setMatrixAt(i, dummy.matrix);
+  }
+  smokeMesh.instanceMatrix.needsUpdate = true;
+
+  // Campfire flames
+  for (let i = 0; i < fireCount; i++) {
+    const f = fireData[i];
+    f.t = (f.t + dt * f.speed) % 1.0;
+    const fx = world.firePos.x + Math.cos(f.angle + elapsed * 2.0) * f.rad * (1.0 - f.t * 0.65);
+    const fy = world.firePos.y + 0.15 + f.t * 1.65;
+    const fz = world.firePos.z + Math.sin(f.angle + elapsed * 2.0) * f.rad * (1.0 - f.t * 0.65);
+    const sc = (1.0 - f.t) * 0.34 + 0.04;
+    dummy.position.set(fx, fy, fz);
+    dummy.scale.set(sc, sc * 1.2, sc);
+    dummy.rotation.set(0, f.t * 3, 0);
+    dummy.updateMatrix();
+    fireMesh.setMatrixAt(i, dummy.matrix);
+    tmpColor.setHex(f.t < 0.35 ? 0xfff176 : f.t < 0.72 ? 0xff8f2b : 0xe53935);
+    fireMesh.setColorAt(i, tmpColor);
+  }
+  fireMesh.instanceMatrix.needsUpdate = true;
+  fireMesh.instanceColor.needsUpdate = true;
+
+  // Active Volcano Lava Bombs & Glowing Smoke
+  if (volcanoMode) {
+    for (let i = 0; i < lavaCount; i++) {
+      const l = lavaData[i];
+      l.t = (l.t + dt * l.speed) % 1.0;
+      const tSec = l.t * 1.7;
+      const lx = 7.2 + l.vx * tSec;
+      const ly = 11.2 + l.vy * tSec - 4.9 * tSec * tSec;
+      const lz = -6.8 + l.vz * tSec;
+      const sc = l.size * (1.0 - l.t * 0.55);
+      dummy.position.set(lx, Math.max(2, ly), lz);
+      dummy.scale.set(sc, sc, sc);
+      dummy.rotation.set(l.t * 6, l.t * 4, 0);
+      dummy.updateMatrix();
+      lavaMesh.setMatrixAt(i, dummy.matrix);
+      tmpColor.setHex(l.t < 0.25 ? 0xfff066 : l.t < 0.6 ? 0xff5a1f : 0x3b2d30);
+      lavaMesh.setColorAt(i, tmpColor);
+    }
+    lavaMesh.instanceMatrix.needsUpdate = true;
+    lavaMesh.instanceColor.needsUpdate = true;
+  }
+
+  // Burst particles (fireworks / water splashes / gold coins)
+  let burstDirty = false;
+  for (let i = 0; i < burstMax; i++) {
+    const p = burstParticles[i];
+    if (!p.active) continue;
+    burstDirty = true;
+    p.life += dt;
+    if (p.life >= p.maxLife) {
+      p.active = false;
+      dummy.position.set(0, -100, 0);
+      dummy.scale.set(0.001, 0.001, 0.001);
+      dummy.updateMatrix();
+      burstMesh.setMatrixAt(i, dummy.matrix);
+      continue;
+    }
+    p.vel.y -= p.gravity * dt;
+    p.vel.multiplyScalar(1 - dt * 0.72);
+    p.pos.addScaledVector(p.vel, dt);
+    const k = 1.0 - p.life / p.maxLife;
+    const s = p.size * k;
+    dummy.position.copy(p.pos);
+    dummy.scale.set(s, s, s);
+    dummy.rotation.set(p.life * 5, p.life * 4, 0);
+    dummy.updateMatrix();
+    burstMesh.setMatrixAt(i, dummy.matrix);
+    burstMesh.setColorAt(i, p.color);
+  }
+  if (burstDirty) {
+    burstMesh.instanceMatrix.needsUpdate = true;
+    burstMesh.instanceColor.needsUpdate = true;
+  }
+  if (fireworkFlash.intensity > 0.05) {
+    fireworkFlash.intensity *= Math.pow(0.04, dt);
+  } else {
+    fireworkFlash.intensity = 0;
+  }
+
+  // Smooth Camera Preset Fly-to
+  if (camAnim) {
+    camAnim.progress += dt / camAnim.duration;
+    const t = Math.min(1, camAnim.progress);
+    const ease = 1 - Math.pow(1 - t, 3);
+    camera.position.lerpVectors(camAnim.startPos, camAnim.endPos, ease);
+    controls.target.lerpVectors(camAnim.startTarget, camAnim.endTarget, ease);
+    if (t >= 1) camAnim = null;
+  }
+
+  controls.update();
+  renderer.render(scene, camera);
+}
+
+animate();
+requestAnimationFrame(() => {
+  document.getElementById('loader').classList.add('hidden');
+});
