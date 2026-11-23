@@ -1,0 +1,2314 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>体素乐高海岛 · Voxel LEGO Island</title>
+  <style>
+    :root {
+      --bg-glass: rgba(15, 22, 36, 0.62);
+      --bg-glass-hover: rgba(28, 40, 64, 0.78);
+      --border-glass: rgba(255, 255, 255, 0.14);
+      --text-main: #f4f7fb;
+      --text-dim: rgba(226, 234, 246, 0.72);
+      --accent: #ffb84d;
+      --accent-2: #56ccf2;
+      --shadow: 0 12px 36px rgba(0, 0, 0, 0.34);
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      user-select: none;
+      -webkit-user-select: none;
+    }
+
+    html, body {
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background: #0c1424;
+      font-family: "Inter", "PingFang SC", "Microsoft YaHei", system-ui, -apple-system, sans-serif;
+      color: var(--text-main);
+    }
+
+    #canvas-container {
+      position: fixed;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      cursor: grab;
+    }
+
+    #canvas-container:active {
+      cursor: grabbing;
+    }
+
+    /* Loading Overlay */
+    #loader {
+      position: fixed;
+      inset: 0;
+      z-index: 100;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 16px;
+      background: radial-gradient(circle at 50% 40%, #1a2a47 0%, #0b1220 100%);
+      transition: opacity 0.55s ease, visibility 0.55s ease;
+    }
+
+    #loader.hidden {
+      opacity: 0;
+      visibility: hidden;
+      pointer-events: none;
+    }
+
+    .lego-spinner {
+      display: flex;
+      gap: 8px;
+    }
+
+    .lego-brick-dot {
+      width: 18px;
+      height: 18px;
+      border-radius: 4px;
+      position: relative;
+      animation: brickBounce 0.9s infinite ease-in-out;
+      box-shadow: inset 0 -3px 0 rgba(0,0,0,0.22), 0 4px 12px rgba(0,0,0,0.3);
+    }
+
+    .lego-brick-dot::before {
+      content: "";
+      position: absolute;
+      top: -4px;
+      left: 4px;
+      width: 10px;
+      height: 4px;
+      border-radius: 2px 2px 0 0;
+      background: inherit;
+      filter: brightness(1.08);
+    }
+
+    .lego-brick-dot:nth-child(1) { background: #e84c3d; animation-delay: 0s; }
+    .lego-brick-dot:nth-child(2) { background: #f5b935; animation-delay: 0.14s; }
+    .lego-brick-dot:nth-child(3) { background: #3bb273; animation-delay: 0.28s; }
+    .lego-brick-dot:nth-child(4) { background: #3a86ff; animation-delay: 0.42s; }
+
+    @keyframes brickBounce {
+      0%, 80%, 100% { transform: translateY(0); }
+      40% { transform: translateY(-12px); }
+    }
+
+    #loader-text {
+      font-size: 14px;
+      letter-spacing: 0.08em;
+      color: var(--text-dim);
+    }
+
+    /* HUD */
+    .hud {
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      z-index: 20;
+      transition: opacity 0.35s ease;
+    }
+
+    .hud.zen .hud-hideable {
+      opacity: 0;
+      pointer-events: none;
+      transform: translateY(10px);
+    }
+
+    .glass-panel {
+      pointer-events: auto;
+      background: var(--bg-glass);
+      backdrop-filter: blur(14px);
+      -webkit-backdrop-filter: blur(14px);
+      border: 1px solid var(--border-glass);
+      border-radius: 16px;
+      box-shadow: var(--shadow);
+      transition: opacity 0.3s ease, transform 0.3s ease;
+    }
+
+    /* Top Left Header */
+    .top-left {
+      position: absolute;
+      top: 18px;
+      left: 18px;
+      padding: 13px 18px;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      max-width: 310px;
+    }
+
+    .brand-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .brand-icon {
+      width: 28px;
+      height: 28px;
+      border-radius: 8px;
+      background: linear-gradient(135deg, #ff7b54, #ffb84d);
+      display: grid;
+      place-items: center;
+      font-size: 15px;
+      box-shadow: inset 0 -2px 0 rgba(0,0,0,0.22);
+      flex-shrink: 0;
+    }
+
+    .brand-title {
+      font-size: 16px;
+      font-weight: 700;
+      letter-spacing: 0.02em;
+    }
+
+    .brand-sub {
+      font-size: 11.5px;
+      color: var(--text-dim);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    .pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: 2px 8px;
+      border-radius: 999px;
+      background: rgba(255, 255, 255, 0.09);
+      font-size: 11px;
+      color: #e6eefc;
+    }
+
+    /* Top Right Controls */
+    .top-right {
+      position: absolute;
+      top: 18px;
+      right: 18px;
+      display: flex;
+      gap: 8px;
+      pointer-events: auto;
+    }
+
+    .icon-btn {
+      height: 38px;
+      padding: 0 13px;
+      border-radius: 12px;
+      border: 1px solid var(--border-glass);
+      background: var(--bg-glass);
+      backdrop-filter: blur(14px);
+      -webkit-backdrop-filter: blur(14px);
+      color: var(--text-main);
+      font-size: 12.5px;
+      font-weight: 500;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      box-shadow: var(--shadow);
+      transition: background 0.2s, border-color 0.2s, transform 0.15s;
+    }
+
+    .icon-btn:hover {
+      background: var(--bg-glass-hover);
+      border-color: rgba(255, 255, 255, 0.28);
+    }
+
+    .icon-btn:active {
+      transform: scale(0.96);
+    }
+
+    .icon-btn.active {
+      background: rgba(255, 184, 77, 0.22);
+      border-color: rgba(255, 184, 77, 0.65);
+      color: #ffe2ad;
+    }
+
+    /* Bottom Dock */
+    .bottom-dock {
+      position: absolute;
+      bottom: 20px;
+      left: 50%;
+      transform: translateX(-50%);
+      padding: 12px 18px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      width: min(740px, calc(100vw - 32px));
+    }
+
+    .hud.zen .bottom-dock {
+      transform: translate(-50%, 16px);
+    }
+
+    .dock-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex-wrap: wrap;
+      justify-content: space-between;
+    }
+
+    .time-block {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex: 1 1 320px;
+    }
+
+    .play-btn {
+      width: 34px;
+      height: 34px;
+      border-radius: 10px;
+      border: 1px solid var(--border-glass);
+      background: rgba(255, 255, 255, 0.1);
+      color: var(--text-main);
+      font-size: 14px;
+      cursor: pointer;
+      display: grid;
+      place-items: center;
+      flex-shrink: 0;
+      transition: background 0.2s, transform 0.15s;
+    }
+
+    .play-btn:hover {
+      background: rgba(255, 255, 255, 0.2);
+    }
+
+    .play-btn:active {
+      transform: scale(0.94);
+    }
+
+    .clock-label {
+      min-width: 92px;
+      font-size: 13px;
+      font-weight: 600;
+      font-variant-numeric: tabular-nums;
+      display: flex;
+      align-items: center;
+      gap: 5px;
+    }
+
+    .time-slider {
+      -webkit-appearance: none;
+      appearance: none;
+      flex: 1;
+      height: 7px;
+      border-radius: 999px;
+      background: linear-gradient(90deg,
+        #0f1b38 0%,
+        #223561 18%,
+        #f29457 27%,
+        #66c4ff 42%,
+        #4ba8ff 56%,
+        #ff874d 74%,
+        #2e356e 84%,
+        #0f1b38 100%);
+      outline: none;
+      cursor: pointer;
+      box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.45);
+    }
+
+    .time-slider::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      appearance: none;
+      width: 17px;
+      height: 17px;
+      border-radius: 50%;
+      background: #ffffff;
+      border: 2px solid #ffb84d;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.45);
+      cursor: pointer;
+      transition: transform 0.15s;
+    }
+
+    .time-slider::-webkit-slider-thumb:hover {
+      transform: scale(1.16);
+    }
+
+    .preset-group {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      flex-wrap: wrap;
+    }
+
+    .chip-btn {
+      padding: 5px 10px;
+      border-radius: 9px;
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      background: rgba(255, 255, 255, 0.07);
+      color: var(--text-dim);
+      font-size: 12px;
+      cursor: pointer;
+      transition: all 0.18s;
+      white-space: nowrap;
+    }
+
+    .chip-btn:hover {
+      background: rgba(255, 255, 255, 0.16);
+      color: var(--text-main);
+    }
+
+    .chip-btn.active {
+      background: rgba(86, 204, 242, 0.22);
+      border-color: rgba(86, 204, 242, 0.65);
+      color: #d6f4ff;
+    }
+
+    .divider {
+      height: 1px;
+      background: rgba(255, 255, 255, 0.1);
+      width: 100%;
+    }
+
+    .hint-text {
+      font-size: 11px;
+      color: rgba(226, 234, 246, 0.56);
+    }
+
+    @media (max-width: 640px) {
+      .top-left {
+        top: 10px;
+        left: 10px;
+        padding: 10px 12px;
+      }
+      .top-right {
+        top: 10px;
+        right: 10px;
+      }
+      .icon-btn span.label {
+        display: none;
+      }
+      .bottom-dock {
+        bottom: 10px;
+        padding: 10px 12px;
+      }
+      .hint-text {
+        display: none;
+      }
+    }
+  </style>
+
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "https://cdn.jsdelivr.net/npm/three@0.164.1/build/three.module.js",
+        "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.164.1/examples/jsm/"
+      }
+    }
+  </script>
+</head>
+<body>
+  <div id="loader">
+    <div class="lego-spinner">
+      <div class="lego-brick-dot"></div>
+      <div class="lego-brick-dot"></div>
+      <div class="lego-brick-dot"></div>
+      <div class="lego-brick-dot"></div>
+    </div>
+    <div id="loader-text">正在拼装乐高体素海岛…</div>
+  </div>
+
+  <div id="canvas-container"></div>
+
+  <div class="hud" id="hud">
+    <div class="glass-panel top-left hud-hideable">
+      <div class="brand-row">
+        <div class="brand-icon">🏝️</div>
+        <div class="brand-title">乐高体素海岛 · 昼夜微缩世界</div>
+      </div>
+      <div class="brand-sub">
+        <span class="pill" id="stat-bricks">🧱 0 块积木</span>
+        <span class="pill" id="stat-studs">⚪ 0 颗凸点</span>
+      </div>
+    </div>
+
+    <div class="top-right">
+      <button class="icon-btn hud-hideable" id="btn-firework" title="发射体素烟花">🎆 <span class="label">烟花</span></button>
+      <button class="icon-btn active hud-hideable" id="btn-studs" title="切换乐高凸点">🧱 <span class="label">乐高凸点</span></button>
+      <button class="icon-btn active hud-hideable" id="btn-rotate" title="自动缓慢环绕">🔄 <span class="label">自动旋转</span></button>
+      <button class="icon-btn" id="btn-zen" title="隐藏/显示界面">👁️ <span class="label">纯净视角</span></button>
+    </div>
+
+    <div class="glass-panel bottom-dock hud-hideable">
+      <div class="dock-row">
+        <div class="time-block">
+          <button class="play-btn" id="btn-play" title="播放/暂停昼夜循环">⏸</button>
+          <div class="clock-label" id="clock-label">☀️ 10:00 上午</div>
+          <input type="range" class="time-slider" id="time-slider" min="0" max="24" step="0.02" value="10.2" />
+        </div>
+        <div class="preset-group">
+          <button class="chip-btn" data-time="6.1">🌅 黎明</button>
+          <button class="chip-btn" data-time="12.5">☀️ 正午</button>
+          <button class="chip-btn" data-time="17.85">🌇 日落</button>
+          <button class="chip-btn" data-time="22.4">🌙 星空</button>
+        </div>
+      </div>
+
+      <div class="divider"></div>
+
+      <div class="dock-row">
+        <div class="preset-group" id="camera-presets">
+          <button class="chip-btn active" data-cam="overview">🗺️ 全景鸟瞰</button>
+          <button class="chip-btn" data-cam="village">🏘️ 港口小镇</button>
+          <button class="chip-btn" data-cam="lighthouse">🚨 灯塔岬角</button>
+          <button class="chip-btn" data-cam="waterfall">⛰️ 瀑布山巅</button>
+          <button class="chip-btn" data-cam="beach">🔥 营火海滩</button>
+        </div>
+        <div class="hint-text">左键旋转 · 滚轮缩放 · 右键平移 · 点击海岛放体素礼花</div>
+      </div>
+    </div>
+  </div>
+
+  <script type="module">
+    import * as THREE from 'three';
+    import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+    // =========================================================================
+    // 1. DETERMINISTIC RANDOM & NOISE HELPERS
+    // =========================================================================
+    function hash2(x, z) {
+      let n = Math.sin(x * 127.1 + z * 311.7) * 43758.5453123;
+      return n - Math.floor(n);
+    }
+
+    function valueNoise(x, z) {
+      const ix = Math.floor(x);
+      const iz = Math.floor(z);
+      const fx = x - ix;
+      const fz = z - iz;
+      const ux = fx * fx * (3 - 2 * fx);
+      const uz = fz * fz * (3 - 2 * fz);
+      const a = hash2(ix, iz);
+      const b = hash2(ix + 1, iz);
+      const c = hash2(ix, iz + 1);
+      const d = hash2(ix + 1, iz + 1);
+      return a + (b - a) * ux + (c - a) * uz + (a - b - c + d) * ux * uz;
+    }
+
+    function fbm(x, z) {
+      return valueNoise(x, z) * 0.6 + valueNoise(x * 2.1 + 13.7, z * 2.1 - 7.3) * 0.28 + valueNoise(x * 4.3 - 5.1, z * 4.3 + 9.2) * 0.12;
+    }
+
+    function smoothstep(edge0, edge1, x) {
+      const t = Math.max(0, Math.min(1, (x - edge0) / (edge1 - edge0)));
+      return t * t * (3 - 2 * t);
+    }
+
+    // =========================================================================
+    // 2. RENDERER, SCENE, CAMERA & CONTROLS
+    // =========================================================================
+    const container = document.getElementById('canvas-container');
+    const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.shadowMap.enabled = true;
+    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    renderer.toneMappingExposure = 1.08;
+    container.appendChild(renderer.domElement);
+
+    const scene = new THREE.Scene();
+    scene.fog = new THREE.FogExp2(0x9bd2f5, 0.0046);
+
+    const camera = new THREE.PerspectiveCamera(42, window.innerWidth / window.innerHeight, 0.5, 420);
+    camera.position.set(29, 23, 35);
+
+    const controls = new OrbitControls(camera, renderer.domElement);
+    controls.enableDamping = true;
+    controls.dampingFactor = 0.06;
+    controls.maxPolarAngle = Math.PI * 0.478;
+    controls.minPolarAngle = 0.14;
+    controls.minDistance = 11;
+    controls.maxDistance = 82;
+    controls.target.set(-0.8, 3.2, 0.4);
+    controls.autoRotate = true;
+    controls.autoRotateSpeed = 0.45;
+
+    // =========================================================================
+    // 3. PROCEDURAL LEGO BRICK TEXTURE (Subtle Beveled Seams)
+    // =========================================================================
+    function createLegoBrickTexture() {
+      const size = 128;
+      const canvas = document.createElement('canvas');
+      canvas.width = size;
+      canvas.height = size;
+      const ctx = canvas.getContext('2d');
+
+      // Subtle plastic surface sheen
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(0, 0, size, size);
+
+      // Gentle inner highlight gradient
+      const grad = ctx.createLinearGradient(0, 0, size, size);
+      grad.addColorStop(0, 'rgba(255,255,255,0.08)');
+      grad.addColorStop(0.5, 'rgba(255,255,255,0.0)');
+      grad.addColorStop(1, 'rgba(0,0,0,0.06)');
+      ctx.fillStyle = grad;
+      ctx.fillRect(0, 0, size, size);
+
+      // Crisp LEGO brick seam bevel around edges
+      ctx.strokeStyle = 'rgba(0, 0, 0, 0.15)';
+      ctx.lineWidth = 4;
+      ctx.strokeRect(2, 2, size - 4, size - 4);
+
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.22)';
+      ctx.lineWidth = 2;
+      ctx.strokeRect(5, 5, size - 10, size - 10);
+
+      const tex = new THREE.CanvasTexture(canvas);
+      tex.colorSpace = THREE.SRGBColorSpace;
+      tex.anisotropy = 4;
+      return tex;
+    }
+
+    const legoBrickTex = createLegoBrickTexture();
+
+    // =========================================================================
+    // 4. VOXEL WORLD BUILDER (Instanced LEGO Bricks + Studs + Emissive Windows)
+    // =========================================================================
+    const PALETTE = {
+      sandLight: 0xf4dc9c,
+      sandWarm: 0xe8c97a,
+      sandWet: 0xc9aa63,
+      grassBright: 0x5bbd4b,
+      grassLush: 0x45a342,
+      grassMeadow: 0x6ac754,
+      grassDark: 0x36853c,
+      dirt: 0x8b5e3c,
+      cliffLight: 0x8d959e,
+      cliffMid: 0x6f7782,
+      cliffDark: 0x545b66,
+      snow: 0xf4f8ff,
+      snowShade: 0xdce7f5,
+      woodLight: 0xc68b53,
+      woodMid: 0x9c6638,
+      woodDark: 0x6d4525,
+      cobble: 0xb0b5ba,
+      cobbleAlt: 0x99a0a8,
+      wallCream: 0xf7eed8,
+      wallWarm: 0xf2e0be,
+      wallStone: 0xd6d9de,
+      roofRed: 0xd9453b,
+      roofRedDark: 0xb5322b,
+      roofBlue: 0x3674c9,
+      roofBlueDark: 0x285aa0,
+      roofOchre: 0xe89c2e,
+      roofOchreDark: 0xc97f1d,
+      lighthouseRed: 0xe03c31,
+      lighthouseWhite: 0xf7f8fa,
+      ironDark: 0x2b313a,
+      pineDark: 0x26693a,
+      pineMid: 0x2f7d44,
+      pineLight: 0x3d944e,
+      palmLeaf: 0x57b846,
+      palmLeafTip: 0x73cc52,
+      autumnGold: 0xf0a630,
+      flowerRed: 0xf25260,
+      flowerYellow: 0xffd23f,
+      flowerPink: 0xf78fb3,
+      coralPink: 0xff6b8b,
+      coralOrange: 0xff944d,
+      coralPurple: 0xa66cff,
+      waterPond: 0x4ad5e8,
+      umbrellaBlue: 0x2f8ef0,
+      umbrellaWhite: 0xf9fafb,
+      chimney: 0x7e6d68,
+      sailWhite: 0xf9f9f6,
+      sailRed: 0xe54842,
+      hullBlue: 0x2c66b8,
+      windowDay: 0x6ca8d4,
+    };
+
+    const solidMap = new Map();     // "x,y,z" -> { x, y, z, color, stud }
+    const windowBlocks = [];        // glowing cottage windows
+    const lanternBlocks = [];       // warm streetlights & lighthouse lantern
+    const waterVoxelBlocks = [];    // inland waterfall/lagoon translucent voxels
+    const landFootprint = new Set();// "x,z" where terrain rises above water (gy >= 1)
+
+    const keyOf = (x, y, z) => `${x},${y},${z}`;
+
+    function setVoxel(x, y, z, color, stud = true) {
+      const ix = Math.round(x);
+      const iy = Math.round(y);
+      const iz = Math.round(z);
+      solidMap.set(keyOf(ix, iy, iz), { x: ix, y: iy, z: iz, color, stud });
+    }
+
+    function deleteVoxel(x, y, z) {
+      solidMap.delete(keyOf(Math.round(x), Math.round(y), Math.round(z)));
+    }
+
+    function hasVoxel(x, y, z) {
+      return solidMap.has(keyOf(Math.round(x), Math.round(y), Math.round(z)));
+    }
+
+    function addWindowVoxel(x, y, z) {
+      const ix = Math.round(x);
+      const iy = Math.round(y);
+      const iz = Math.round(z);
+      solidMap.delete(keyOf(ix, iy, iz));
+      windowBlocks.push({ x: ix, y: iy, z: iz });
+    }
+
+    function addLanternVoxel(x, y, z, color = 0xffd27a) {
+      const ix = Math.round(x);
+      const iy = Math.round(y);
+      const iz = Math.round(z);
+      solidMap.delete(keyOf(ix, iy, iz));
+      lanternBlocks.push({ x: ix, y: iy, z: iz, color });
+    }
+
+    // -------------------------------------------------------------------------
+    // 4A. TERRAIN HEIGHTMAP GENERATION
+    // -------------------------------------------------------------------------
+    const GRID_MIN = -22;
+    const GRID_MAX = 22;
+    const terrainHeight = new Map();
+
+    function computeTerrainHeight(x, z) {
+      // 1) Main island silhouette (organic multi-lobe shape)
+      const dxMain = (x - 1.5) / 13.8;
+      const dzMain = (z + 0.5) / 12.6;
+      const distMain = Math.hypot(dxMain, dzMain);
+      const coastNoise = (fbm(x * 0.14 + 3.2, z * 0.14 - 2.1) - 0.5) * 0.38;
+      const mainMask = 1.0 - (distMain + coastNoise);
+
+      // Carve sheltered crescent bay in south-central harbor
+      const distBay = Math.hypot((x - 2.2) / 5.2, (z - 10.6) / 4.2);
+      const bayCarve = Math.max(0, 1.0 - distBay) * 0.72;
+
+      // 2) Western Lighthouse Islet centered at (-14, 3)
+      const distIslet = Math.hypot((x + 14.0) / 4.3, (z - 3.0) / 4.2);
+      const isletNoise = (fbm(x * 0.25, z * 0.25) - 0.5) * 0.22;
+      const isletMask = 1.0 - (distIslet + isletNoise);
+
+      // 3) Small coral reef outcrop southeast
+      const distReef = Math.hypot((x - 13.5) / 3.0, (z - 8.5) / 2.6);
+      const reefMask = 1.0 - distReef;
+
+      // Determine base land elevation
+      let h = -1;
+
+      if (isletMask > 0.02) {
+        if (isletMask > 0.34) h = 2;
+        else if (isletMask > 0.14) h = 1;
+        else h = 0;
+      }
+
+      const effMain = mainMask - bayCarve;
+      if (effMain > -0.05) {
+        let mh = 0;
+        if (effMain > 0.07) mh = 1; // Beach
+        if (effMain > 0.22) mh = 2; // Meadow / Village terrace
+        if (effMain > 0.44) mh = 3; // Upper terrace
+
+        // Northeast Mountain Peak centered around (7, -7)
+        const distMtn = Math.hypot((x - 7.2) / 6.8, (z + 6.8) / 6.3);
+        if (distMtn < 1.0) {
+          const ridge = Math.pow(1.0 - distMtn, 1.45) * 9.8 + (fbm(x * 0.28, z * 0.28) - 0.4) * 2.2;
+          mh = Math.max(mh, Math.round(2 + ridge));
+        }
+
+        // Windmill Hillock centered at (-5, -6)
+        const distHill = Math.hypot((x + 5.0) / 4.6, (z + 6.0) / 4.4);
+        if (distHill < 1.0 && effMain > 0.16) {
+          const bump = Math.round(smoothstep(1.0, 0.2, distHill) * 2.4);
+          mh = Math.max(mh, 2 + bump);
+        }
+
+        h = Math.max(h, mh);
+      }
+
+      if (reefMask > 0.18) {
+        h = Math.max(h, 0);
+      }
+
+      // Dedicated clean flat plateaus for landmarks so zero clipping/floating occurs
+      // Lighthouse flat pad (-14, 3)
+      if (Math.hypot(x + 14, z - 3) <= 2.3) h = 2;
+
+      // Windmill flat pad (-5, -6)
+      if (x >= -7 && x <= -3 && z >= -8 && z <= -4) h = 4;
+
+      // Harbor Village flat terrace
+      if (x >= -3 && x <= 8 && z >= 1 && z <= 5) h = 2;
+
+      // Upper Cottage 3 flat terrace
+      if (x >= -2 && x <= 2 && z >= -5 && z <= -1) h = 3;
+
+      // Sandy beach promenade & campfire area
+      if (x >= -6 && x <= -2 && z >= 6 && z <= 8) h = 1;
+      if (x >= 1 && x <= 9 && z >= 6 && z <= 7) h = 1;
+
+      // Bridge channel guarantee (clear water between islet and main island)
+      if (x >= -10 && x <= -8 && z >= 1 && z <= 5) h = Math.min(h, 0);
+
+      // Crystal Mountain Lagoon & Dramatic Waterfall Cliff (East-Southeast face of peak)
+      if (x >= 7 && x <= 10 && z >= -3 && z <= -1) h = 1;
+      if (x >= 11 && x <= 13 && z >= -2 && z <= -1) h = Math.min(h, 1);
+      // Tall rocky cliff wall behind the waterfall at z = -5, -4
+      if (x >= 7 && x <= 9 && z === -5) h = Math.max(h, 8);
+      if (x >= 7 && x <= 8 && z === -4) h = 7;
+      if (x === 9 && z === -4) h = Math.max(h, 6);
+
+      return h;
+    }
+
+    for (let x = GRID_MIN; x <= GRID_MAX; x++) {
+      for (let z = GRID_MIN; z <= GRID_MAX; z++) {
+        const h = computeTerrainHeight(x, z);
+        if (h < 0) continue;
+        terrainHeight.set(`${x},${z}`, h);
+        if (h >= 1) landFootprint.add(`${x},${z}`);
+
+        for (let y = 0; y <= h; y++) {
+          let color = PALETTE.dirt;
+          const n = hash2(x * 1.7 + y * 3.1, z * 2.3 - y);
+
+          if (y === 0) {
+            color = n > 0.5 ? PALETTE.sandWet : PALETTE.sandWarm;
+          } else if (y === 1) {
+            if (h === 1) {
+              color = n > 0.45 ? PALETTE.sandLight : PALETTE.sandWarm;
+            } else {
+              color = (h >= 5) ? PALETTE.cliffDark : PALETTE.dirt;
+            }
+          } else if (y === h) {
+            if (h >= 9) {
+              color = n > 0.35 ? PALETTE.snow : PALETTE.snowShade;
+            } else if (h >= 6) {
+              color = n > 0.5 ? PALETTE.cliffLight : PALETTE.cliffMid;
+            } else {
+              color = n > 0.66 ? PALETTE.grassBright : (n > 0.33 ? PALETTE.grassLush : PALETTE.grassMeadow);
+            }
+          } else {
+            if (y >= 5 || h >= 6) {
+              color = n > 0.55 ? PALETTE.cliffMid : (n > 0.25 ? PALETTE.cliffLight : PALETTE.cliffDark);
+            } else {
+              color = PALETTE.dirt;
+            }
+          }
+
+          setVoxel(x, y, z, color, y === h);
+        }
+      }
+    }
+
+    // Add colorful underwater coral clusters on shallow seafloor
+    const coralSpots = [
+      [-12, 7], [-11, 8], [-9, 9], [10, 8], [12, 7], [13, 8], [14, 9],
+      [-17, 1], [-16, 6], [13, 2], [12, -3], [1, 13], [-5, 11]
+    ];
+    coralSpots.forEach(([cx, cz], idx) => {
+      if (!landFootprint.has(`${cx},${cz}`)) {
+        const cCol = idx % 3 === 0 ? PALETTE.coralPink : (idx % 3 === 1 ? PALETTE.coralOrange : PALETTE.coralPurple);
+        setVoxel(cx, 0, cz, cCol, true);
+      }
+    });
+
+    // -------------------------------------------------------------------------
+    // 4B. CRYSTAL LAGOON & WATERFALL CASCADE VOXELS
+    // -------------------------------------------------------------------------
+    // Turquoise lagoon pool at the base of the cliff
+    for (let x = 7; x <= 10; x++) {
+      for (let z = -3; z <= -1; z++) {
+        setVoxel(x, 1, z, PALETTE.sandWarm, false);
+        waterVoxelBlocks.push({ x, y: 1.78, z, scaleY: 0.62 });
+      }
+    }
+    // Mountain source notch at top of waterfall (x = 7..8, z = -4)
+    for (let x = 7; x <= 8; x++) {
+      setVoxel(x, 6, -4, PALETTE.cliffDark, false);
+      deleteVoxel(x, 7, -4);
+      waterVoxelBlocks.push({ x, y: 7.0, z: -4, scaleY: 0.72 });
+      // Gleaming vertical voxel waterfall column pouring straight down into the lagoon
+      for (let y = 2; y <= 6; y++) {
+        waterVoxelBlocks.push({ x, y: y + 0.5, z: -3.25, scaleY: 1.02 });
+      }
+    }
+
+    // Little turquoise brook flowing east out of lagoon into the sea
+    for (let x = 11; x <= 13; x++) {
+      for (let z = -2; z <= -1; z++) {
+        const h = terrainHeight.get(`${x},${z}`) ?? 1;
+        if (h >= 1) {
+          for (let y = 2; y <= h; y++) deleteVoxel(x, y, z);
+          setVoxel(x, 1, z, PALETTE.sandWet, false);
+          waterVoxelBlocks.push({ x, y: 1.62, z, scaleY: 0.42 });
+        }
+      }
+    }
+
+    // -------------------------------------------------------------------------
+    // 4C. HARBOR VILLAGE: COBBLESTONE PLAZA, COTTAGES, PIER & BRIDGE
+    // -------------------------------------------------------------------------
+    // Cobblestone town square & paths
+    for (let x = -2; x <= 7; x++) {
+      for (let z = 3; z <= 5; z++) {
+        const alt = (x + z) % 2 === 0 ? PALETTE.cobble : PALETTE.cobbleAlt;
+        setVoxel(x, 2, z, alt, true);
+      }
+    }
+    // Steps down from village (z=5, y=2) to beach/pier (z=6..7, y=1)
+    setVoxel(2, 2, 6, PALETTE.cobble, true);
+    setVoxel(3, 2, 6, PALETTE.cobbleAlt, true);
+    setVoxel(2, 1, 7, PALETTE.woodLight, true);
+    setVoxel(3, 1, 7, PALETTE.woodLight, true);
+
+    // Helper: Build a charming LEGO Cottage
+    function buildCottage(bx, by, bz, width, depth, wallCol, roofCol, roofDarkCol, doorSide = 'south') {
+      const wallH = 3;
+      for (let dx = 0; dx < width; dx++) {
+        for (let dz = 0; dz < depth; dz++) {
+          for (let dy = 0; dy < wallH; dy++) {
+            const isEdge = dx === 0 || dx === width - 1 || dz === 0 || dz === depth - 1;
+            if (!isEdge) continue;
+            const wx = bx + dx;
+            const wy = by + dy;
+            const wz = bz + dz;
+
+            // Corner pillars slightly warmer
+            const isCorner = (dx === 0 || dx === width - 1) && (dz === 0 || dz === depth - 1);
+            setVoxel(wx, wy, wz, isCorner ? PALETTE.wallStone : wallCol, false);
+          }
+        }
+      }
+
+      // Door & Glowing Windows
+      const midX = bx + Math.floor(width / 2);
+      const midZ = bz + Math.floor(depth / 2);
+      if (doorSide === 'south') {
+        setVoxel(midX, by, bz + depth - 1, PALETTE.woodDark, false);
+        setVoxel(midX, by + 1, bz + depth - 1, PALETTE.woodMid, false);
+        // Front windows
+        if (width >= 4) {
+          addWindowVoxel(bx + 1, by + 1, bz + depth - 1);
+          addWindowVoxel(bx + width - 2, by + 1, bz + depth - 1);
+        }
+        // Side & back windows
+        addWindowVoxel(bx, by + 1, midZ);
+        addWindowVoxel(bx + width - 1, by + 1, midZ);
+        addWindowVoxel(midX, by + 1, bz);
+      }
+
+      // Pitched LEGO Roof (overhanging slightly)
+      const roofBaseY = by + wallH;
+      for (let layer = 0; layer <= Math.ceil(depth / 2); layer++) {
+        const zStart = bz - 1 + layer;
+        const zEnd = bz + depth - layer;
+        if (zStart > zEnd) break;
+        for (let x = bx - 1; x <= bx + width; x++) {
+          for (let z = zStart; z <= zEnd; z++) {
+            const isEave = (z === zStart || z === zEnd || x === bx - 1 || x === bx + width);
+            const col = (layer % 2 === 0) ? roofCol : roofDarkCol;
+            setVoxel(x, roofBaseY + layer, z, isEave ? roofDarkCol : col, true);
+          }
+        }
+      }
+
+      // Chimney on one corner of the roof
+      const cx = bx + width - 1;
+      const cz = bz;
+      setVoxel(cx, roofBaseY + 1, cz, PALETTE.chimney, false);
+      setVoxel(cx, roofBaseY + 2, cz, PALETTE.chimney, false);
+      setVoxel(cx, roofBaseY + 3, cz, PALETTE.cliffDark, true);
+      return new THREE.Vector3(cx, roofBaseY + 4.1, cz);
+    }
+
+    const chimneyPositions = [];
+    // Cottage 1: Red Roof Bakery/Inn
+    chimneyPositions.push(buildCottage(-2, 3, 0, 4, 3, PALETTE.wallCream, PALETTE.roofRed, PALETTE.roofRedDark));
+    // Cottage 2: Cobalt Blue Harbor House
+    chimneyPositions.push(buildCottage(4, 3, 1, 4, 3, PALETTE.wallWarm, PALETTE.roofBlue, PALETTE.roofBlueDark));
+    // Cottage 3: Ochre Hillside Cottage
+    chimneyPositions.push(buildCottage(-2, 4, -5, 4, 3, PALETTE.wallCream, PALETTE.roofOchre, PALETTE.roofOchreDark));
+
+    // Wooden Harbor Pier extending south into sheltered bay
+    for (let z = 8; z <= 14; z++) {
+      const plankCol = z % 2 === 0 ? PALETTE.woodLight : PALETTE.woodMid;
+      setVoxel(2, 1, z, plankCol, true);
+      setVoxel(3, 1, z, plankCol, true);
+      if (z === 9 || z === 12 || z === 14) {
+        setVoxel(1, 0, z, PALETTE.woodDark, false);
+        setVoxel(1, 1, z, PALETTE.woodDark, true);
+        setVoxel(4, 0, z, PALETTE.woodDark, false);
+        setVoxel(4, 1, z, PALETTE.woodDark, true);
+      }
+    }
+    // Pier Lantern Posts
+    setVoxel(1, 2, 14, PALETTE.ironDark, false);
+    addLanternVoxel(1, 3, 14, 0xffd073);
+    setVoxel(4, 2, 14, PALETTE.ironDark, false);
+    addLanternVoxel(4, 3, 14, 0xffd073);
+
+    // Village Street Lanterns
+    const villageLanterns = [
+      [1, 3, 5], [5, 3, 5], [-3, 3, 4]
+    ];
+    villageLanterns.forEach(([lx, ly, lz]) => {
+      setVoxel(lx, ly, lz, PALETTE.ironDark, false);
+      setVoxel(lx, ly + 1, lz, PALETTE.ironDark, false);
+      addLanternVoxel(lx, ly + 2, lz, 0xffd479);
+    });
+
+    // Arched Wooden Bridge connecting Main Island (x=-7) to Lighthouse Islet (x=-11)
+    for (let x = -11; x <= -7; x++) {
+      const arch = (x === -9) ? 3 : 2;
+      for (let z = 2; z <= 4; z++) {
+        setVoxel(x, arch, z, (x % 2 === 0) ? PALETTE.woodLight : PALETTE.woodMid, true);
+      }
+      // Wooden bridge side posts
+      if (x === -11 || x === -9 || x === -7) {
+        setVoxel(x, arch + 1, 2, PALETTE.woodDark, true);
+        setVoxel(x, arch + 1, 4, PALETTE.woodDark, true);
+      }
+    }
+    addLanternVoxel(-9, 5, 2, 0xffd479);
+
+    // -------------------------------------------------------------------------
+    // 4D. RED & WHITE STRIPED LIGHTHOUSE (on Western Islet -14, 3)
+    // -------------------------------------------------------------------------
+    const lhX = -14;
+    const lhZ = 3;
+    // Stone base
+    for (let dx = -1; dx <= 1; dx++) {
+      for (let dz = -1; dz <= 1; dz++) {
+        setVoxel(lhX + dx, 3, lhZ + dz, PALETTE.cliffLight, true);
+      }
+    }
+    // Striped tower (y = 4..10)
+    for (let y = 4; y <= 10; y++) {
+      const col = (Math.floor((y - 4) / 2) % 2 === 0) ? PALETTE.lighthouseRed : PALETTE.lighthouseWhite;
+      for (let dx = -1; dx <= 1; dx++) {
+        for (let dz = -1; dz <= 1; dz++) {
+          // Octagonal chamfer on upper half
+          if (y >= 6 && Math.abs(dx) === 1 && Math.abs(dz) === 1) continue;
+          setVoxel(lhX + dx, y, lhZ + dz, col, false);
+        }
+      }
+    }
+    // Small door & window on lighthouse
+    setVoxel(lhX + 1, 4, lhZ, PALETTE.woodDark, false);
+    addWindowVoxel(lhX, 7, lhZ + 1);
+    addWindowVoxel(lhX + 1, 9, lhZ);
+
+    // Gallery Deck (y = 11)
+    for (let dx = -1; dx <= 1; dx++) {
+      for (let dz = -1; dz <= 1; dz++) {
+        setVoxel(lhX + dx, 11, lhZ + dz, PALETTE.ironDark, true);
+      }
+    }
+    // Glowing Lantern Room (y = 12)
+    addLanternVoxel(lhX, 12, lhZ, 0xfff0b0);
+    // Pointed Red Roof (y = 13..14)
+    for (let dx = -1; dx <= 1; dx++) {
+      for (let dz = -1; dz <= 1; dz++) {
+        if (Math.abs(dx) === 1 && Math.abs(dz) === 1) continue;
+        setVoxel(lhX + dx, 13, lhZ + dz, PALETTE.lighthouseRed, true);
+      }
+    }
+    setVoxel(lhX, 14, lhZ, PALETTE.lighthouseRed, true);
+
+    // -------------------------------------------------------------------------
+    // 4E. WINDMILL TOWER (on Hillock -5, -6) + ROTATING SAILS BUILT AS GROUP
+    // -------------------------------------------------------------------------
+    const wmX = -5;
+    const wmZ = -6;
+    for (let y = 5; y <= 10; y++) {
+      const r = y <= 6 ? 1 : 1;
+      for (let dx = -r; dx <= r; dx++) {
+        for (let dz = -r; dz <= r; dz++) {
+          if (y >= 8 && Math.abs(dx) === 1 && Math.abs(dz) === 1) continue;
+          const col = y === 5 ? PALETTE.cliffLight : (y === 10 ? PALETTE.roofRed : PALETTE.wallCream);
+          setVoxel(wmX + dx, y, wmZ + dz, col, y === 10);
+        }
+      }
+    }
+    setVoxel(wmX, 11, wmZ, PALETTE.roofRedDark, true);
+    setVoxel(wmX, 5, wmZ + 1, PALETTE.woodDark, false);
+    addWindowVoxel(wmX, 7, wmZ + 1);
+    addWindowVoxel(wmX - 1, 8, wmZ);
+
+    // -------------------------------------------------------------------------
+    // 4F. BEACH CAMPFIRE, UMBRELLA, TREES & FLOWERS
+    // -------------------------------------------------------------------------
+    // Campfire ring at (-4, 2, 7)
+    const fireX = -4, fireY = 2, fireZ = 7;
+    setVoxel(fireX - 1, fireY, fireZ, PALETTE.woodDark, true);
+    setVoxel(fireX + 1, fireY, fireZ, PALETTE.woodDark, true);
+    setVoxel(fireX, fireY, fireZ - 1, PALETTE.cliffMid, false);
+    setVoxel(fireX, fireY, fireZ + 1, PALETTE.cliffMid, false);
+    // Log benches near campfire
+    setVoxel(fireX - 2, fireY, fireZ - 1, PALETTE.woodMid, true);
+    setVoxel(fireX - 2, fireY, fireZ, PALETTE.woodMid, true);
+
+    // Striped Beach Umbrella at (7, 2, 7)
+    setVoxel(7, 2, 7, PALETTE.woodLight, false);
+    setVoxel(7, 3, 7, PALETTE.woodLight, false);
+    for (let dx = -1; dx <= 1; dx++) {
+      for (let dz = -1; dz <= 1; dz++) {
+        const col = (dx + dz) % 2 === 0 ? PALETTE.umbrellaBlue : PALETTE.umbrellaWhite;
+        setVoxel(7 + dx, 4, 7 + dz, col, true);
+      }
+    }
+    setVoxel(7, 5, 7, PALETTE.umbrellaBlue, true);
+    // Beach towel
+    setVoxel(8, 1, 7, PALETTE.roofRed, true);
+
+    // Tree Builder: Pine Trees
+    function buildPineTree(tx, tz, height = 5, golden = false) {
+      const groundH = terrainHeight.get(`${tx},${tz}`);
+      if (groundH === undefined || groundH < 2) return;
+      const by = groundH + 1;
+      setVoxel(tx, by, tz, PALETTE.woodDark, false);
+      setVoxel(tx, by + 1, tz, PALETTE.woodDark, false);
+
+      const leafDark = golden ? 0xd9822b : PALETTE.pineDark;
+      const leafMid = golden ? PALETTE.autumnGold : PALETTE.pineMid;
+      const leafLight = golden ? 0xffc857 : PALETTE.pineLight;
+
+      for (let layer = 0; layer < height - 1; layer++) {
+        const ly = by + 1 + layer;
+        const radius = layer < 2 ? 1 : (layer < height - 2 ? 1 : 0);
+        for (let dx = -radius; dx <= radius; dx++) {
+          for (let dz = -radius; dz <= radius; dz++) {
+            if (layer === 1 && Math.abs(dx) === 1 && Math.abs(dz) === 1) continue;
+            if (layer === 2 && Math.abs(dx) + Math.abs(dz) > 1) continue;
+            if (dx === 0 && dz === 0 && layer === 0) continue;
+            const col = layer === 0 ? leafDark : (layer === height - 2 ? leafLight : leafMid);
+            setVoxel(tx + dx, ly, tz + dz, col, true);
+          }
+        }
+      }
+      setVoxel(tx, by + height, tz, leafLight, true);
+    }
+
+    // Tree Builder: Beach Palm Trees
+    function buildPalmTree(tx, tz, leanX = 1, leanZ = 0) {
+      const groundH = terrainHeight.get(`${tx},${tz}`);
+      if (groundH === undefined || groundH < 1) return;
+      const by = groundH + 1;
+      setVoxel(tx, by, tz, PALETTE.woodMid, false);
+      setVoxel(tx, by + 1, tz, PALETTE.woodLight, false);
+      setVoxel(tx + leanX, by + 2, tz + leanZ, PALETTE.woodMid, false);
+      setVoxel(tx + leanX, by + 3, tz + leanZ, PALETTE.woodLight, false);
+
+      const cx = tx + leanX;
+      const cy = by + 4;
+      const cz = tz + leanZ;
+      setVoxel(cx, cy, cz, PALETTE.palmLeaf, true);
+      const dirs = [[1,0], [-1,0], [0,1], [0,-1]];
+      dirs.forEach(([dx, dz]) => {
+        setVoxel(cx + dx, cy, cz + dz, PALETTE.palmLeaf, true);
+        setVoxel(cx + dx * 2, cy - 1, cz + dz * 2, PALETTE.palmLeafTip, true);
+      });
+    }
+
+    // Place Pine Trees around foothills & woods (keeping waterfall & roofs clear)
+    const pines = [
+      [1, -7, 5, false], [-1, -9, 6, false], [3, -10, 5, false],
+      [-8, -3, 5, false], [-9, -6, 4, true], [10, -7, 5, false],
+      [10, 3, 5, true],
+      [-4, -1, 4, false], [3, -6, 5, false], [-15, 5, 4, false]
+    ];
+    pines.forEach(([x, z, h, g]) => buildPineTree(x, z, h, g));
+
+    // Place Palm Trees along sandy beaches
+    buildPalmTree(-7, 6, -1, 1);
+    buildPalmTree(9, 6, 1, 1);
+    buildPalmTree(-12, 1, 1, -1);
+
+    // Scatter colorful flower studs on open grass
+    const flowerColors = [PALETTE.flowerRed, PALETTE.flowerYellow, PALETTE.flowerPink];
+    for (let x = -15; x <= 12; x++) {
+      for (let z = -10; z <= 8; z++) {
+        const h = terrainHeight.get(`${x},${z}`);
+        if (h === 2 || h === 3 || h === 4) {
+          if (hash2(x * 7.3, z * 11.9) > 0.91 && !hasVoxel(x, h + 1, z)) {
+            // Avoid cobblestone plaza
+            if (x >= -2 && x <= 7 && z >= 3 && z <= 5) continue;
+            const fCol = flowerColors[Math.floor(hash2(x * 3.1, z * 5.7) * 3)];
+            // Tiny flower voxel (handled via small extra stud later or mini voxel)
+            solidMap.set(keyOf(x, h + 1, z), { x, y: h + 1, z, color: fCol, stud: false, isFlower: true });
+          }
+        }
+      }
+    }
+
+    // -------------------------------------------------------------------------
+    // 5. INSTANCED MESH COMPILATION (Ultra-fast LEGO Bricks & Studs!)
+    // -------------------------------------------------------------------------
+    const brickList = [];
+    const studList = [];
+    const flowerList = [];
+
+    for (const v of solidMap.values()) {
+      if (v.isFlower) {
+        flowerList.push(v);
+        continue;
+      }
+      brickList.push(v);
+      // Place LEGO stud on top if requested and no solid block sits directly above
+      if (v.stud && !solidMap.has(keyOf(v.x, v.y + 1, v.z))) {
+        studList.push(v);
+      }
+    }
+
+    const dummy = new THREE.Object3D();
+    const tmpColor = new THREE.Color();
+
+    // Main LEGO Bricks InstancedMesh
+    const brickGeo = new THREE.BoxGeometry(1, 1, 1);
+    const brickMat = new THREE.MeshStandardMaterial({
+      map: legoBrickTex,
+      roughness: 0.36,
+      metalness: 0.04,
+    });
+
+    const brickMesh = new THREE.InstancedMesh(brickGeo, brickMat, brickList.length);
+    brickMesh.castShadow = true;
+    brickMesh.receiveShadow = true;
+
+    brickList.forEach((v, i) => {
+      dummy.position.set(v.x, v.y + 0.5, v.z);
+      dummy.scale.set(1, 1, 1);
+      dummy.rotation.set(0, 0, 0);
+      dummy.updateMatrix();
+      brickMesh.setMatrixAt(i, dummy.matrix);
+      tmpColor.setHex(v.color);
+      // Tiny organic plastic hue/value variance so blocks feel handcrafted
+      const jitter = (hash2(v.x * 13.1 + v.y, v.z * 17.7) - 0.5) * 0.035;
+      tmpColor.offsetHSL(0, 0, jitter);
+      brickMesh.setColorAt(i, tmpColor);
+    });
+    brickMesh.instanceMatrix.needsUpdate = true;
+    brickMesh.instanceColor.needsUpdate = true;
+    scene.add(brickMesh);
+
+    // LEGO Cylindrical Studs InstancedMesh
+    const studGeo = new THREE.CylinderGeometry(0.28, 0.28, 0.16, 12);
+    const studMat = new THREE.MeshStandardMaterial({
+      roughness: 0.30,
+      metalness: 0.05,
+    });
+    const studMesh = new THREE.InstancedMesh(studGeo, studMat, studList.length);
+    studMesh.castShadow = true;
+    studMesh.receiveShadow = true;
+
+    studList.forEach((v, i) => {
+      dummy.position.set(v.x, v.y + 1.08, v.z);
+      dummy.scale.set(1, 1, 1);
+      dummy.rotation.set(0, 0, 0);
+      dummy.updateMatrix();
+      studMesh.setMatrixAt(i, dummy.matrix);
+      tmpColor.setHex(v.color);
+      const jitter = (hash2(v.x * 13.1 + v.y, v.z * 17.7) - 0.5) * 0.035;
+      tmpColor.offsetHSL(0, 0, jitter + 0.015);
+      studMesh.setColorAt(i, tmpColor);
+    });
+    studMesh.instanceMatrix.needsUpdate = true;
+    studMesh.instanceColor.needsUpdate = true;
+    scene.add(studMesh);
+
+    // Wildflower Mini-Studs InstancedMesh
+    const flowerGeo = new THREE.CylinderGeometry(0.22, 0.18, 0.24, 6);
+    const flowerMat = new THREE.MeshStandardMaterial({ roughness: 0.4, metalness: 0.02 });
+    const flowerMesh = new THREE.InstancedMesh(flowerGeo, flowerMat, Math.max(1, flowerList.length));
+    flowerMesh.castShadow = true;
+    flowerList.forEach((v, i) => {
+      dummy.position.set(v.x, v.y + 0.12, v.z);
+      dummy.scale.set(1, 1, 1);
+      dummy.updateMatrix();
+      flowerMesh.setMatrixAt(i, dummy.matrix);
+      tmpColor.setHex(v.color);
+      flowerMesh.setColorAt(i, tmpColor);
+    });
+    flowerMesh.instanceMatrix.needsUpdate = true;
+    if (flowerMesh.instanceColor) flowerMesh.instanceColor.needsUpdate = true;
+    if (flowerList.length > 0) scene.add(flowerMesh);
+
+    // Cottage Windows (Warm Glow at Night)
+    const windowMat = new THREE.MeshStandardMaterial({
+      color: 0x7cb8e0,
+      emissive: new THREE.Color(0xffb44c),
+      emissiveIntensity: 0.0,
+      roughness: 0.18,
+      metalness: 0.1,
+    });
+    const windowMesh = new THREE.InstancedMesh(brickGeo, windowMat, Math.max(1, windowBlocks.length));
+    windowBlocks.forEach((v, i) => {
+      dummy.position.set(v.x, v.y + 0.5, v.z);
+      dummy.scale.set(1.01, 1.01, 1.01);
+      dummy.updateMatrix();
+      windowMesh.setMatrixAt(i, dummy.matrix);
+    });
+    windowMesh.instanceMatrix.needsUpdate = true;
+    scene.add(windowMesh);
+
+    // Lantern Blocks (Streetlights, Pier & Lighthouse Room)
+    const lanternMat = new THREE.MeshStandardMaterial({
+      color: 0xfff5d6,
+      emissive: new THREE.Color(0xffcc66),
+      emissiveIntensity: 0.2,
+      roughness: 0.2,
+    });
+    const lanternMesh = new THREE.InstancedMesh(new THREE.BoxGeometry(0.68, 0.78, 0.68), lanternMat, Math.max(1, lanternBlocks.length));
+    lanternBlocks.forEach((v, i) => {
+      dummy.position.set(v.x, v.y + 0.45, v.z);
+      dummy.scale.set(1, 1, 1);
+      dummy.updateMatrix();
+      lanternMesh.setMatrixAt(i, dummy.matrix);
+    });
+    lanternMesh.instanceMatrix.needsUpdate = true;
+    scene.add(lanternMesh);
+
+    // Inland Lagoon / Waterfall / Brook Water Voxels
+    const pondMat = new THREE.MeshPhysicalMaterial({
+      color: 0x3ce0f7,
+      emissive: new THREE.Color(0x0c4c63),
+      emissiveIntensity: 0.28,
+      roughness: 0.10,
+      metalness: 0.04,
+      transparent: true,
+      opacity: 0.86,
+    });
+    const pondMesh = new THREE.InstancedMesh(brickGeo, pondMat, Math.max(1, waterVoxelBlocks.length));
+    waterVoxelBlocks.forEach((v, i) => {
+      dummy.position.set(v.x, v.y, v.z);
+      dummy.scale.set(1, v.scaleY, 1);
+      dummy.updateMatrix();
+      pondMesh.setMatrixAt(i, dummy.matrix);
+    });
+    pondMesh.instanceMatrix.needsUpdate = true;
+    scene.add(pondMesh);
+
+    // Update HUD stats
+    document.getElementById('stat-bricks').textContent = `🧱 ${(brickList.length + windowBlocks.length + lanternBlocks.length).toLocaleString()} 块积木`;
+    document.getElementById('stat-studs').textContent = `⚪ ${studList.length.toLocaleString()} 颗凸点`;
+
+    // =========================================================================
+    // 6. DYNAMIC ANIMATED MODELS (Windmill Sails, Sailboat, Fishing Boat, Clouds, Birds)
+    // =========================================================================
+    function createMiniLegoGroup(voxels) {
+      const group = new THREE.Group();
+      const mat = new THREE.MeshStandardMaterial({ map: legoBrickTex, roughness: 0.35, metalness: 0.04 });
+      const geo = new THREE.BoxGeometry(1, 1, 1);
+      const inst = new THREE.InstancedMesh(geo, mat, voxels.length);
+      inst.castShadow = true;
+      inst.receiveShadow = true;
+      voxels.forEach((v, i) => {
+        dummy.position.set(v.x, v.y, v.z);
+        dummy.scale.set(v.sx ?? 1, v.sy ?? 1, v.sz ?? 1);
+        dummy.rotation.set(0, 0, 0);
+        dummy.updateMatrix();
+        inst.setMatrixAt(i, dummy.matrix);
+        tmpColor.setHex(v.c);
+        inst.setColorAt(i, tmpColor);
+      });
+      inst.instanceMatrix.needsUpdate = true;
+      inst.instanceColor.needsUpdate = true;
+      group.add(inst);
+      return group;
+    }
+
+    // 6A. Rotating Windmill Sails
+    const windmillVoxels = [
+      { x: 0, y: 0, z: 0, sx: 0.7, sy: 0.7, sz: 0.9, c: PALETTE.woodDark }
+    ];
+    for (let i = 1; i <= 4; i++) {
+      // 4 arms
+      windmillVoxels.push({ x: 0, y: i * 0.85, z: 0.25, sx: 0.28, sy: 0.85, sz: 0.22, c: PALETTE.woodDark });
+      windmillVoxels.push({ x: 0, y: -i * 0.85, z: 0.25, sx: 0.28, sy: 0.85, sz: 0.22, c: PALETTE.woodDark });
+      windmillVoxels.push({ x: i * 0.85, y: 0, z: 0.25, sx: 0.85, sy: 0.28, sz: 0.22, c: PALETTE.woodDark });
+      windmillVoxels.push({ x: -i * 0.85, y: 0, z: 0.25, sx: 0.85, sy: 0.28, sz: 0.22, c: PALETTE.woodDark });
+      // Cloth sails offset
+      if (i >= 2) {
+        windmillVoxels.push({ x: 0.42, y: i * 0.85, z: 0.22, sx: 0.65, sy: 0.72, sz: 0.12, c: PALETTE.sailWhite });
+        windmillVoxels.push({ x: -0.42, y: -i * 0.85, z: 0.22, sx: 0.65, sy: 0.72, sz: 0.12, c: PALETTE.sailWhite });
+        windmillVoxels.push({ x: i * 0.85, y: -0.42, z: 0.22, sx: 0.72, sy: 0.65, sz: 0.12, c: PALETTE.sailWhite });
+        windmillVoxels.push({ x: -i * 0.85, y: 0.42, z: 0.22, sx: 0.72, sy: 0.65, sz: 0.12, c: PALETTE.sailWhite });
+      }
+    }
+    const windmillSails = createMiniLegoGroup(windmillVoxels);
+    windmillSails.position.set(wmX, 9.2, wmZ + 1.55);
+    scene.add(windmillSails);
+
+    // 6B. Cruising LEGO Sailboat
+    const boatVoxels = [];
+    // Hull
+    for (let z = -2; z <= 2; z++) {
+      const w = Math.abs(z) === 2 ? 0 : 1;
+      for (let x = -w; x <= w; x++) {
+        boatVoxels.push({ x: x * 0.65, y: 0, z: z * 0.65, sx: 0.65, sy: 0.55, sz: 0.65, c: PALETTE.hullBlue });
+        boatVoxels.push({ x: x * 0.65, y: 0.45, z: z * 0.65, sx: 0.68, sy: 0.35, sz: 0.68, c: PALETTE.sailWhite });
+      }
+    }
+    // Mast & Striped Sail
+    for (let y = 1; y <= 5; y++) {
+      boatVoxels.push({ x: 0, y: y * 0.62, z: 0, sx: 0.24, sy: 0.65, sz: 0.24, c: PALETTE.woodDark });
+    }
+    const sailRows = [
+      { y: 1.4, w: 3, c: PALETTE.sailWhite },
+      { y: 2.0, w: 3, c: PALETTE.sailRed },
+      { y: 2.6, w: 2, c: PALETTE.sailWhite },
+      { y: 3.15, w: 1, c: PALETTE.sailRed },
+    ];
+    sailRows.forEach(r => {
+      for (let i = 0; i < r.w; i++) {
+        boatVoxels.push({ x: 0.18, y: r.y, z: 0.35 + i * 0.52, sx: 0.18, sy: 0.56, sz: 0.52, c: r.c });
+      }
+    });
+    // Tiny boat mast lantern
+    const sailboat = createMiniLegoGroup(boatVoxels);
+    const boatLantern = new THREE.PointLight(0xffcb69, 0, 7);
+    boatLantern.position.set(0, 1.2, -0.8);
+    sailboat.add(boatLantern);
+    scene.add(sailboat);
+
+    // 6C. Docked Fishing Boat beside Pier
+    const skiffVoxels = [
+      { x: 0, y: 0, z: -0.7, sx: 0.7, sy: 0.42, sz: 0.7, c: PALETTE.woodMid },
+      { x: 0, y: 0, z: 0, sx: 1.15, sy: 0.42, sz: 0.85, c: PALETTE.roofRed },
+      { x: 0, y: 0, z: 0.7, sx: 0.7, sy: 0.42, sz: 0.7, c: PALETTE.woodMid },
+      { x: 0, y: 0.32, z: 0, sx: 0.9, sy: 0.22, sz: 0.3, c: PALETTE.woodLight },
+    ];
+    const fishingBoat = createMiniLegoGroup(skiffVoxels);
+    fishingBoat.position.set(5.6, 1.32, 12.2);
+    fishingBoat.rotation.y = 0.28;
+    scene.add(fishingBoat);
+
+    // 6D. Rotating Lighthouse Volumetric Light Beam
+    const lighthouseBeamGroup = new THREE.Group();
+    lighthouseBeamGroup.position.set(lhX, 12.45, lhZ);
+
+    const beamGeo = new THREE.ConeGeometry(4.2, 26, 20, 1, true);
+    beamGeo.translate(0, -13, 0);
+    beamGeo.rotateX(Math.PI / 2);
+
+    const beamMat = new THREE.ShaderMaterial({
+      transparent: true,
+      depthWrite: false,
+      blending: THREE.AdditiveBlending,
+      side: THREE.DoubleSide,
+      uniforms: {
+        uOpacity: { value: 0.0 },
+        uColor: { value: new THREE.Color(0xffe69c) }
+      },
+      vertexShader: `
+        varying vec2 vUv;
+        varying vec3 vNormalView;
+        varying vec3 vViewDir;
+        void main() {
+          vUv = uv;
+          vec4 mvPos = modelViewMatrix * vec4(position, 1.0);
+          vNormalView = normalize(normalMatrix * normal);
+          vViewDir = normalize(-mvPos.xyz);
+          gl_Position = projectionMatrix * mvPos;
+        }
+      `,
+      fragmentShader: `
+        uniform float uOpacity;
+        uniform vec3 uColor;
+        varying vec2 vUv;
+        varying vec3 vNormalView;
+        varying vec3 vViewDir;
+        void main() {
+          float distFade = pow(vUv.y, 1.7);
+          float edgeFade = pow(abs(dot(vNormalView, vViewDir)), 1.4);
+          float alpha = distFade * edgeFade * uOpacity * 0.42;
+          gl_FragColor = vec4(uColor, alpha);
+        }
+      `
+    });
+    const beam1 = new THREE.Mesh(beamGeo, beamMat);
+    const beam2 = new THREE.Mesh(beamGeo, beamMat);
+    beam2.rotation.y = Math.PI;
+    lighthouseBeamGroup.add(beam1, beam2);
+    scene.add(lighthouseBeamGroup);
+
+    // 6E. Fluffy Drifting Voxel Clouds
+    const clouds = [];
+    const cloudMat = new THREE.MeshStandardMaterial({
+      color: 0xffffff,
+      roughness: 0.85,
+      metalness: 0.0,
+      transparent: true,
+      opacity: 0.92,
+    });
+
+    function createVoxelCloud(cx, cy, cz, scale = 1) {
+      const g = new THREE.Group();
+      const blocks = [
+        [0, 0, 0, 3.2, 1.1, 2.2],
+        [1.1, 0.55, 0.1, 1.8, 0.9, 1.6],
+        [-1.0, 0.45, -0.2, 1.7, 0.85, 1.5],
+        [0.1, 0.75, 0.0, 1.5, 0.7, 1.4],
+      ];
+      blocks.forEach(([x, y, z, sx, sy, sz]) => {
+        const m = new THREE.Mesh(brickGeo, cloudMat);
+        m.position.set(x, y, z);
+        m.scale.set(sx, sy, sz);
+        g.add(m);
+      });
+      g.position.set(cx, cy, cz);
+      g.scale.setScalar(scale);
+      scene.add(g);
+      clouds.push({
+        mesh: g,
+        speed: 0.45 + Math.random() * 0.45,
+        baseY: cy,
+        phase: Math.random() * Math.PI * 2,
+      });
+    }
+
+    createVoxelCloud(-18, 19.5, -14, 1.15);
+    createVoxelCloud(12, 21.0, -18, 1.35);
+    createVoxelCloud(-25, 18.0, 10, 0.95);
+    createVoxelCloud(22, 20.0, 8, 1.1);
+    createVoxelCloud(-2, 23.0, 22, 1.2);
+    createVoxelCloud(4, 18.5, -28, 1.0);
+
+    // 6F. Gliding Voxel Seagulls
+    const birds = [];
+    const birdMat = new THREE.MeshStandardMaterial({ color: 0xf8fafc, roughness: 0.5 });
+    for (let i = 0; i < 6; i++) {
+      const bird = new THREE.Group();
+      const body = new THREE.Mesh(brickGeo, birdMat);
+      body.scale.set(0.18, 0.14, 0.45);
+      const wingL = new THREE.Mesh(brickGeo, birdMat);
+      wingL.scale.set(0.42, 0.08, 0.22);
+      wingL.position.set(-0.24, 0.04, 0);
+      const wingR = new THREE.Mesh(brickGeo, birdMat);
+      wingR.scale.set(0.42, 0.08, 0.22);
+      wingR.position.set(0.24, 0.04, 0);
+      bird.add(body, wingL, wingR);
+      scene.add(bird);
+      birds.push({
+        group: bird,
+        wingL,
+        wingR,
+        radius: 9 + i * 2.4,
+        speed: 0.28 + (i % 3) * 0.07,
+        angle: i * 1.15,
+        height: 13.5 + (i % 4) * 1.8,
+        flapSpeed: 5.5 + i * 0.7,
+      });
+    }
+
+    // =========================================================================
+    // 7. ANIMATED PARTICLE SYSTEMS (Waterfall, Chimney Smoke, Campfire, Fireworks)
+    // =========================================================================
+    const particleGeo = new THREE.BoxGeometry(1, 1, 1);
+
+    // 7A. Waterfall Cascade Particles
+    const waterfallCount = 52;
+    const waterfallMat = new THREE.MeshStandardMaterial({ color: 0xbef4ff, roughness: 0.2, transparent: true, opacity: 0.88 });
+    const waterfallMesh = new THREE.InstancedMesh(particleGeo, waterfallMat, waterfallCount);
+    const waterfallData = [];
+    for (let i = 0; i < waterfallCount; i++) {
+      waterfallData.push({
+        t: Math.random(),
+        xOff: (Math.random() - 0.5) * 0.82,
+        zOff: (Math.random() - 0.5) * 0.35,
+        speed: 0.42 + Math.random() * 0.25,
+        size: 0.22 + Math.random() * 0.22,
+      });
+    }
+    scene.add(waterfallMesh);
+
+    // 7B. Chimney Smoke Cubes
+    const smokeCount = 28;
+    const smokeMat = new THREE.MeshStandardMaterial({ color: 0xeef3f8, roughness: 1.0, transparent: true, opacity: 0.62 });
+    const smokeMesh = new THREE.InstancedMesh(particleGeo, smokeMat, smokeCount);
+    const smokeData = [];
+    for (let i = 0; i < smokeCount; i++) {
+      smokeData.push({
+        origin: chimneyPositions[i % chimneyPositions.length],
+        t: Math.random(),
+        speed: 0.14 + Math.random() * 0.07,
+        driftX: 0.6 + Math.random() * 0.6,
+        driftZ: -0.3 + Math.random() * 0.6,
+      });
+    }
+    scene.add(smokeMesh);
+
+    // 7C. Campfire Flames & Embers
+    const fireCount = 26;
+    const fireMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
+    const fireMesh = new THREE.InstancedMesh(particleGeo, fireMat, fireCount);
+    const fireData = [];
+    for (let i = 0; i < fireCount; i++) {
+      fireData.push({
+        t: Math.random(),
+        speed: 0.75 + Math.random() * 0.65,
+        angle: Math.random() * Math.PI * 2,
+        rad: Math.random() * 0.34,
+      });
+    }
+    scene.add(fireMesh);
+
+    // 7D. Interactive Voxel Fireworks / Confetti Bursts
+    const burstMax = 260;
+    const burstMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
+    const burstMesh = new THREE.InstancedMesh(particleGeo, burstMat, burstMax);
+    burstMesh.frustumCulled = false;
+    const burstParticles = [];
+    for (let i = 0; i < burstMax; i++) {
+      burstParticles.push({
+        active: false,
+        pos: new THREE.Vector3(0, -100, 0),
+        vel: new THREE.Vector3(),
+        life: 0,
+        maxLife: 1,
+        size: 0.25,
+        color: new THREE.Color(0xffffff),
+      });
+      dummy.position.set(0, -100, 0);
+      dummy.scale.set(0.001, 0.001, 0.001);
+      dummy.updateMatrix();
+      burstMesh.setMatrixAt(i, dummy.matrix);
+      burstMesh.setColorAt(i, tmpColor.setHex(0xffffff));
+    }
+    burstMesh.instanceMatrix.needsUpdate = true;
+    burstMesh.instanceColor.needsUpdate = true;
+    scene.add(burstMesh);
+
+    const fireworkFlash = new THREE.PointLight(0xffaa55, 0, 40);
+    scene.add(fireworkFlash);
+
+    const FIREWORK_COLORS = [0xff5e7e, 0xffd166, 0x4cc9f0, 0x72efdd, 0xb388ff, 0xff9f43, 0x69f0ae];
+    let burstCursor = 0;
+
+    function spawnVoxelBurst(origin, count = 42, speed = 8.5, isFirework = true) {
+      const baseColor = FIREWORK_COLORS[Math.floor(Math.random() * FIREWORK_COLORS.length)];
+      const secondColor = FIREWORK_COLORS[Math.floor(Math.random() * FIREWORK_COLORS.length)];
+      for (let i = 0; i < count; i++) {
+        const p = burstParticles[burstCursor];
+        burstCursor = (burstCursor + 1) % burstMax;
+        p.active = true;
+        p.pos.copy(origin);
+        const theta = Math.random() * Math.PI * 2;
+        const phi = isFirework ? Math.acos(2 * Math.random() - 1) : Math.random() * Math.PI * 0.45;
+        const spd = speed * (0.45 + Math.random() * 0.65);
+        p.vel.set(
+          Math.sin(phi) * Math.cos(theta) * spd,
+          Math.cos(phi) * spd + (isFirework ? 2.0 : 4.5),
+          Math.sin(phi) * Math.sin(theta) * spd
+        );
+        p.life = 0;
+        p.maxLife = isFirework ? (1.1 + Math.random() * 0.7) : (0.7 + Math.random() * 0.45);
+        p.size = isFirework ? (0.24 + Math.random() * 0.16) : (0.18 + Math.random() * 0.12);
+        p.color.setHex(i % 2 === 0 ? baseColor : secondColor);
+      }
+      if (isFirework) {
+        fireworkFlash.position.copy(origin);
+        fireworkFlash.color.setHex(baseColor);
+        fireworkFlash.intensity = 18;
+      }
+    }
+
+    function launchSkyFirework() {
+      const rx = (Math.random() - 0.5) * 24;
+      const rz = (Math.random() - 0.5) * 20;
+      const ry = 16 + Math.random() * 8;
+      spawnVoxelBurst(new THREE.Vector3(rx, ry, rz), 54, 10.5, true);
+    }
+
+    // =========================================================================
+    // 8. COASTLINE DISTANCE FIELD TEXTURE & CUSTOM SHADER OCEAN
+    // =========================================================================
+    function createCoastDistanceTexture() {
+      const size = 64;
+      const half = size / 2;
+      const data = new Uint8Array(size * size * 4);
+      const landPts = [];
+      for (const k of landFootprint) {
+        const [lx, lz] = k.split(',').map(Number);
+        landPts.push([lx, lz]);
+      }
+
+      for (let iz = 0; iz < size; iz++) {
+        for (let ix = 0; ix < size; ix++) {
+          const wx = ix - half;
+          const wz = iz - half;
+          let minD = 999;
+          for (let j = 0; j < landPts.length; j++) {
+            const dx = wx - landPts[j][0];
+            const dz = wz - landPts[j][1];
+            const d2 = dx * dx + dz * dz;
+            if (d2 < minD) minD = d2;
+          }
+          const dist = Math.sqrt(minD);
+          const norm = Math.max(0, Math.min(1, dist / 14.0));
+          const val = Math.round(norm * 255);
+          const idx = (iz * size + ix) * 4;
+          data[idx] = val;
+          data[idx + 1] = val;
+          data[idx + 2] = val;
+          data[idx + 3] = 255;
+        }
+      }
+      const tex = new THREE.DataTexture(data, size, size, THREE.RGBAFormat);
+      tex.magFilter = THREE.LinearFilter;
+      tex.minFilter = THREE.LinearFilter;
+      tex.needsUpdate = true;
+      return tex;
+    }
+
+    const coastTex = createCoastDistanceTexture();
+
+    const oceanUniforms = {
+      uTime: { value: 0 },
+      uCoastMap: { value: coastTex },
+      uSunDir: { value: new THREE.Vector3(0.5, 0.7, 0.4).normalize() },
+      uSunColor: { value: new THREE.Color(0xfff3d4) },
+      uDeepColor: { value: new THREE.Color(0x0b4b8a) },
+      uShallowColor: { value: new THREE.Color(0x28c7d4) },
+      uSkyColor: { value: new THREE.Color(0x7ac3f7) },
+      uFogColor: { value: new THREE.Color(0x9bd2f5) },
+      uNightFactor: { value: 0.0 },
+    };
+
+    const oceanGeo = new THREE.PlaneGeometry(340, 340, 140, 140);
+    oceanGeo.rotateX(-Math.PI / 2);
+
+    const oceanMat = new THREE.ShaderMaterial({
+      uniforms: oceanUniforms,
+      transparent: true,
+      vertexShader: `
+        uniform float uTime;
+        varying vec3 vWorldPos;
+        varying vec3 vNormal;
+
+        float waveHeight(vec2 p, float t) {
+          float w1 = sin(p.x * 0.24 + t * 1.15) * cos(p.y * 0.18 + t * 0.9) * 0.16;
+          float w2 = sin(p.x * 0.52 - p.y * 0.41 + t * 1.65) * 0.06;
+          return w1 + w2;
+        }
+
+        void main() {
+          vec3 pos = position;
+          float h = waveHeight(pos.xz, uTime);
+          pos.y += h;
+
+          // Numerical wave normal
+          float eps = 0.28;
+          float hx = waveHeight(pos.xz + vec2(eps, 0.0), uTime);
+          float hz = waveHeight(pos.xz + vec2(0.0, eps), uTime);
+          vNormal = normalize(vec3(h - hx, eps, h - hz));
+
+          vec4 wp = modelMatrix * vec4(pos, 1.0);
+          vWorldPos = wp.xyz;
+          gl_Position = projectionMatrix * viewMatrix * wp;
+        }
+      `,
+      fragmentShader: `
+        uniform float uTime;
+        uniform sampler2D uCoastMap;
+        uniform vec3 uSunDir;
+        uniform vec3 uSunColor;
+        uniform vec3 uDeepColor;
+        uniform vec3 uShallowColor;
+        uniform vec3 uSkyColor;
+        uniform vec3 uFogColor;
+        uniform float uNightFactor;
+
+        varying vec3 vWorldPos;
+        varying vec3 vNormal;
+
+        void main() {
+          vec2 coastUV = (vWorldPos.xz + 32.0) / 64.0;
+          float coastDist = 1.0;
+          if (coastUV.x >= 0.0 && coastUV.x <= 1.0 && coastUV.y >= 0.0 && coastUV.y <= 1.0) {
+            coastDist = texture2D(uCoastMap, coastUV).r;
+          }
+
+          // Base shallow-to-deep ocean color
+          float shallowMask = 1.0 - smoothstep(0.04, 0.48, coastDist);
+          vec3 waterCol = mix(uDeepColor, uShallowColor, shallowMask);
+
+          // Subtle LEGO voxel grid shimmer on close water
+          vec2 cell = abs(fract(vWorldPos.xz * 0.5) - 0.5);
+          float subtleFacet = smoothstep(0.46, 0.5, max(cell.x, cell.y)) * 0.028 * (1.0 - smoothstep(20.0, 55.0, length(vWorldPos.xz)));
+          waterCol += vec3(subtleFacet);
+
+          // Fresnel sky reflection
+          vec3 V = normalize(cameraPosition - vWorldPos);
+          vec3 N = normalize(vNormal);
+          float fresnel = pow(1.0 - max(dot(N, V), 0.0), 3.6);
+          waterCol = mix(waterCol, uSkyColor, fresnel * 0.52);
+
+          // Sun / Moon specular shimmer
+          vec3 H = normalize(normalize(uSunDir) + V);
+          float spec = pow(max(dot(N, H), 0.0), 76.0);
+          float specBroad = pow(max(dot(N, H), 0.0), 14.0);
+          waterCol += uSunColor * (spec * 1.15 + specBroad * 0.16);
+
+          // Animated shoreline foam rings hugging the exact island coast
+          float waveOsc = sin(coastDist * 48.0 - uTime * 2.5) * 0.5 + 0.5;
+          float innerFoam = 1.0 - smoothstep(0.04, 0.115, coastDist);
+          float rippleFoam = smoothstep(0.76, 0.94, waveOsc) * (1.0 - smoothstep(0.08, 0.22, coastDist));
+          float foam = clamp(innerFoam * 0.85 + rippleFoam * 0.55, 0.0, 1.0);
+          vec3 foamCol = mix(vec3(0.95, 0.98, 1.0), vec3(0.55, 0.68, 0.86), uNightFactor * 0.72);
+          waterCol = mix(waterCol, foamCol, foam * 0.78);
+
+          // Distance horizon fog blend
+          float camDist = length(cameraPosition - vWorldPos);
+          float fogAmt = 1.0 - exp(-pow(camDist * 0.0052, 2.0));
+          waterCol = mix(waterCol, uFogColor, clamp(fogAmt, 0.0, 1.0));
+
+          // Slightly translucent in shallows so coral/sandbar peeks through
+          float alpha = mix(0.94, 0.72, shallowMask * (1.0 - foam));
+          gl_FragColor = vec4(waterCol, alpha);
+        }
+      `
+    });
+    const oceanMesh = new THREE.Mesh(oceanGeo, oceanMat);
+    oceanMesh.position.y = 1.32;
+    scene.add(oceanMesh);
+
+    // =========================================================================
+    // 9. SKY DOME, VOXEL SUN & MOON, AND TWINKLING STARFIELD
+    // =========================================================================
+    const skyUniforms = {
+      uTopColor: { value: new THREE.Color(0x2a76d4) },
+      uHorizonColor: { value: new THREE.Color(0x9bd6fa) },
+      uSunDir: { value: new THREE.Vector3(0.5, 0.6, 0.4).normalize() },
+      uSunGlowColor: { value: new THREE.Color(0xffe0a3) },
+      uSunGlowStrength: { value: 0.6 },
+    };
+
+    const skyGeo = new THREE.SphereGeometry(210, 32, 20);
+    const skyMat = new THREE.ShaderMaterial({
+      side: THREE.BackSide,
+      depthWrite: false,
+      uniforms: skyUniforms,
+      vertexShader: `
+        varying vec3 vDir;
+        void main() {
+          vDir = normalize(position);
+          gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+        }
+      `,
+      fragmentShader: `
+        uniform vec3 uTopColor;
+        uniform vec3 uHorizonColor;
+        uniform vec3 uSunDir;
+        uniform vec3 uSunGlowColor;
+        uniform float uSunGlowStrength;
+        varying vec3 vDir;
+
+        void main() {
+          float h = clamp(vDir.y, 0.0, 1.0);
+          vec3 col = mix(uHorizonColor, uTopColor, pow(h, 0.58));
+
+          float sunDot = max(dot(normalize(vDir), normalize(uSunDir)), 0.0);
+          col += uSunGlowColor * pow(sunDot, 10.0) * 0.36 * uSunGlowStrength;
+          col += uSunGlowColor * pow(sunDot, 64.0) * 0.62 * uSunGlowStrength;
+          gl_FragColor = vec4(col, 1.0);
+        }
+      `
+    });
+    const skyDome = new THREE.Mesh(skyGeo, skyMat);
+    scene.add(skyDome);
+
+    // Voxel Sun & Moon
+    const voxelSun = new THREE.Mesh(
+      new THREE.BoxGeometry(5.5, 5.5, 5.5),
+      new THREE.MeshBasicMaterial({ color: 0xffe484 })
+    );
+    scene.add(voxelSun);
+
+    const voxelMoon = new THREE.Mesh(
+      new THREE.BoxGeometry(4.2, 4.2, 4.2),
+      new THREE.MeshBasicMaterial({ color: 0xdbe9ff })
+    );
+    scene.add(voxelMoon);
+
+    // Twinkling Starfield
+    const starCount = 650;
+    const starPositions = new Float32Array(starCount * 3);
+    for (let i = 0; i < starCount; i++) {
+      const theta = Math.random() * Math.PI * 2;
+      const phi = Math.acos(0.05 + Math.random() * 0.95); // Upper hemisphere
+      const r = 165 + Math.random() * 25;
+      starPositions[i * 3] = r * Math.sin(phi) * Math.cos(theta);
+      starPositions[i * 3 + 1] = r * Math.cos(phi);
+      starPositions[i * 3 + 2] = r * Math.sin(phi) * Math.sin(theta);
+    }
+    const starGeo = new THREE.BufferGeometry();
+    starGeo.setAttribute('position', new THREE.BufferAttribute(starPositions, 3));
+    const starMat = new THREE.PointsMaterial({
+      color: 0xffffff,
+      size: 1.45,
+      transparent: true,
+      opacity: 0.0,
+      sizeAttenuation: true,
+      depthWrite: false,
+    });
+    const starField = new THREE.Points(starGeo, starMat);
+    scene.add(starField);
+
+    // =========================================================================
+    // 10. LIGHTING SYSTEM (Dynamic Sun/Moon + Village/Campfire/Lighthouse Point Lights)
+    // =========================================================================
+    const hemiLight = new THREE.HemisphereLight(0x9bd6ff, 0x456045, 0.72);
+    scene.add(hemiLight);
+
+    const sunLight = new THREE.DirectionalLight(0xfff6e5, 2.1);
+    sunLight.castShadow = true;
+    sunLight.shadow.mapSize.set(2048, 2048);
+    sunLight.shadow.camera.left = -28;
+    sunLight.shadow.camera.right = 28;
+    sunLight.shadow.camera.top = 28;
+    sunLight.shadow.camera.bottom = -28;
+    sunLight.shadow.camera.near = 5;
+    sunLight.shadow.camera.far = 110;
+    sunLight.shadow.bias = -0.0007;
+    sunLight.shadow.normalBias = 0.038;
+    scene.add(sunLight);
+
+    // Warm nighttime point lights
+    const villageLight = new THREE.PointLight(0xffb554, 0, 22, 1.5);
+    villageLight.position.set(2.5, 5.2, 4.0);
+    scene.add(villageLight);
+
+    const pierLight = new THREE.PointLight(0xffc96b, 0, 14, 1.6);
+    pierLight.position.set(2.5, 4.0, 13.8);
+    scene.add(pierLight);
+
+    const campfireLight = new THREE.PointLight(0xff7728, 0, 13, 1.6);
+    campfireLight.position.set(fireX, fireY + 1.2, fireZ);
+    scene.add(campfireLight);
+
+    const lighthouseGlow = new THREE.PointLight(0xffe89e, 0, 18, 1.4);
+    lighthouseGlow.position.set(lhX, 12.6, lhZ);
+    scene.add(lighthouseGlow);
+
+    // =========================================================================
+    // 11. DAY / NIGHT CYCLE INTERPOLATION (24-Hour Palette)
+    // =========================================================================
+    const KEYFRAMES = [
+      { t: 0.0,  top: 0x060b1a, hor: 0x111f3d, fog: 0x0f1c36, sunC: 0x9bbcff, sunI: 0.45, hemiS: 0x1b2d54, hemiG: 0x0b1220, hemiI: 0.42, deep: 0x061530, shallow: 0x0d3654, cloud: 0x263554, glow: 0.15 },
+      { t: 5.0,  top: 0x132045, hor: 0x3b355c, fog: 0x302c4f, sunC: 0xffa670, sunI: 0.55, hemiS: 0x4b4675, hemiG: 0x1c2033, hemiI: 0.46, deep: 0x091d3b, shallow: 0x154763, cloud: 0x5c4f6e, glow: 0.40 },
+      { t: 6.4,  top: 0x3866a8, hor: 0xffa06b, fog: 0xf2a57c, sunC: 0xffb366, sunI: 1.45, hemiS: 0xffc699, hemiG: 0x4f463d, hemiI: 0.65, deep: 0x144175, shallow: 0x2ea5b8, cloud: 0xffd1b3, glow: 0.95 },
+      { t: 9.0,  top: 0x2a7de0, hor: 0x9cd8fa, fog: 0xa2daf7, sunC: 0xfff5de, sunI: 2.05, hemiS: 0x9bd7ff, hemiG: 0x4d6b47, hemiI: 0.78, deep: 0x0e5599, shallow: 0x28cbd6, cloud: 0xffffff, glow: 0.55 },
+      { t: 13.0, top: 0x1f72db, hor: 0x96d7fc, fog: 0x9bd8fa, sunC: 0xfffaf0, sunI: 2.25, hemiS: 0xa8dfff, hemiG: 0x55754e, hemiI: 0.84, deep: 0x0b5096, shallow: 0x26d1de, cloud: 0xffffff, glow: 0.48 },
+      { t: 16.5, top: 0x2f6cc2, hor: 0xf7be86, fog: 0xe6b58a, sunC: 0xffcf87, sunI: 1.80, hemiS: 0xffd7a8, hemiG: 0x5c5240, hemiI: 0.72, deep: 0x134882, shallow: 0x2db2bd, cloud: 0xffe4c4, glow: 0.85 },
+      { t: 18.0, top: 0x28366e, hor: 0xff754f, fog: 0xd97360, sunC: 0xff8147, sunI: 1.20, hemiS: 0xf08c73, hemiG: 0x362a33, hemiI: 0.58, deep: 0x132b57, shallow: 0x2b6e82, cloud: 0xff9f80, glow: 1.00 },
+      { t: 19.6, top: 0x0c1633, hor: 0x262e57, fog: 0x1e2647, sunC: 0xa8c5ff, sunI: 0.48, hemiS: 0x2a3966, hemiG: 0x121829, hemiI: 0.44, deep: 0x081a38, shallow: 0x113d5c, cloud: 0x364266, glow: 0.25 },
+      { t: 24.0, top: 0x060b1a, hor: 0x111f3d, fog: 0x0f1c36, sunC: 0x9bbcff, sunI: 0.45, hemiS: 0x1b2d54, hemiG: 0x0b1220, hemiI: 0.42, deep: 0x061530, shallow: 0x0d3654, cloud: 0x263554, glow: 0.15 },
+    ];
+
+    const cA = new THREE.Color();
+    const cB = new THREE.Color();
+    function lerpHex(hexA, hexB, f, target) {
+      cA.setHex(hexA);
+      cB.setHex(hexB);
+      target.copy(cA).lerp(cB, f);
+    }
+
+    let timeOfDay = 10.2;
+    let isPlayingTime = true;
+    const timeSlider = document.getElementById('time-slider');
+    const clockLabel = document.getElementById('clock-label');
+
+    function formatClock(t) {
+      const wrapped = ((t % 24) + 24) % 24;
+      const hrs = Math.floor(wrapped);
+      const mins = Math.floor((wrapped - hrs) * 60);
+      const hh = String(hrs).padStart(2, '0');
+      const mm = String(mins).padStart(2, '0');
+      let icon = '☀️', tag = '正午';
+      if (wrapped < 5.2 || wrapped >= 20.0) { icon = '🌙'; tag = '星空'; }
+      else if (wrapped < 7.5) { icon = '🌅'; tag = '黎明'; }
+      else if (wrapped < 11.2) { icon = '🌤️'; tag = '上午'; }
+      else if (wrapped < 15.8) { icon = '☀️'; tag = '正午'; }
+      else if (wrapped < 18.8) { icon = '🌇'; tag = '黄昏'; }
+      else { icon = '🌆'; tag = '暮色'; }
+      return `${icon} ${hh}:${mm} ${tag}`;
+    }
+
+    function applyTimeOfDay(t, elapsedSec) {
+      const hour = ((t % 24) + 24) % 24;
+
+      // Find surrounding keyframes
+      let k0 = KEYFRAMES[0], k1 = KEYFRAMES[1];
+      for (let i = 0; i < KEYFRAMES.length - 1; i++) {
+        if (hour >= KEYFRAMES[i].t && hour <= KEYFRAMES[i + 1].t) {
+          k0 = KEYFRAMES[i];
+          k1 = KEYFRAMES[i + 1];
+          break;
+        }
+      }
+      const span = Math.max(0.0001, k1.t - k0.t);
+      const f = smoothstep(0, 1, (hour - k0.t) / span);
+
+      lerpHex(k0.top, k1.top, f, skyUniforms.uTopColor.value);
+      lerpHex(k0.hor, k1.hor, f, skyUniforms.uHorizonColor.value);
+      lerpHex(k0.fog, k1.fog, f, scene.fog.color);
+      oceanUniforms.uFogColor.value.copy(scene.fog.color);
+      oceanUniforms.uSkyColor.value.copy(skyUniforms.uHorizonColor.value).lerp(skyUniforms.uTopColor.value, 0.35);
+
+      lerpHex(k0.deep, k1.deep, f, oceanUniforms.uDeepColor.value);
+      lerpHex(k0.shallow, k1.shallow, f, oceanUniforms.uShallowColor.value);
+      lerpHex(k0.cloud, k1.cloud, f, cloudMat.color);
+
+      lerpHex(k0.sunC, k1.sunC, f, sunLight.color);
+      sunLight.intensity = THREE.MathUtils.lerp(k0.sunI, k1.sunI, f);
+      lerpHex(k0.hemiS, k1.hemiS, f, hemiLight.color);
+      lerpHex(k0.hemiG, k1.hemiG, f, hemiLight.groundColor);
+      hemiLight.intensity = THREE.MathUtils.lerp(k0.hemiI, k1.hemiI, f);
+
+      skyUniforms.uSunGlowColor.value.copy(sunLight.color);
+      skyUniforms.uSunGlowStrength.value = THREE.MathUtils.lerp(k0.glow, k1.glow, f);
+
+      // Celestial sun & moon arc
+      const sunAngle = ((hour - 6.0) / 24.0) * Math.PI * 2.0;
+      const sunDir = new THREE.Vector3(
+        Math.cos(sunAngle) * 0.92,
+        Math.sin(sunAngle),
+        Math.cos(sunAngle) * 0.38 - 0.32
+      ).normalize();
+      const moonDir = sunDir.clone().negate();
+
+      voxelSun.position.copy(sunDir).multiplyScalar(142);
+      voxelSun.lookAt(0, 0, 0);
+      voxelSun.visible = sunDir.y > -0.14;
+
+      voxelMoon.position.copy(moonDir).multiplyScalar(138);
+      voxelMoon.lookAt(0, 0, 0);
+      voxelMoon.visible = moonDir.y > -0.14;
+
+      // Active directional light tracks Sun by day and Moon by night
+      const nightFactor = 1.0 - smoothstep(-0.08, 0.16, sunDir.y);
+      oceanUniforms.uNightFactor.value = nightFactor;
+
+      const activeDir = sunDir.y >= -0.02 ? sunDir : moonDir;
+      sunLight.position.copy(activeDir).multiplyScalar(55);
+      skyUniforms.uSunDir.value.copy(sunDir);
+      oceanUniforms.uSunDir.value.copy(activeDir);
+      oceanUniforms.uSunColor.value.copy(sunLight.color);
+
+      // Stars fade in smoothly at dusk
+      starMat.opacity = smoothstep(0.32, 0.88, nightFactor) * (0.85 + 0.15 * Math.sin(elapsedSec * 2.1));
+
+      // Night lights: warm cottage windows, lanterns, campfire, lighthouse beam
+      const lampOn = smoothstep(0.22, 0.72, nightFactor);
+      windowMat.emissiveIntensity = lampOn * 1.55;
+      lanternMat.emissiveIntensity = 0.18 + lampOn * 2.1;
+
+      villageLight.intensity = lampOn * 10.5;
+      pierLight.intensity = lampOn * 6.5;
+      boatLantern.intensity = lampOn * 5.0;
+      lighthouseGlow.intensity = lampOn * 11.5;
+      beamMat.uniforms.uOpacity.value = lampOn;
+
+      // Flickering campfire light (always slightly warm, bright at night)
+      const flicker = 0.85 + Math.sin(elapsedSec * 11.3) * 0.12 + Math.cos(elapsedSec * 19.7) * 0.08;
+      campfireLight.intensity = (1.5 + lampOn * 10.0) * flicker;
+
+      clockLabel.textContent = formatClock(hour);
+    }
+
+    // =========================================================================
+    // 12. CAMERA PRESETS & SMOOTH FLY-TO TRANSITIONS
+    // =========================================================================
+    const CAMERA_PRESETS = {
+      overview:   { pos: [29, 23, 35],   target: [-0.8, 3.2, 0.4] },
+      village:    { pos: [4.5, 9.5, 19], target: [2.2, 3.5, 2.5] },
+      lighthouse: { pos: [-26, 13, 16],  target: [-13.5, 7.2, 3.0] },
+      waterfall:  { pos: [22, 16, 4.5],  target: [8.2, 4.2, -2.5] },
+      beach:      { pos: [-11, 7.5, 18], target: [-3.5, 2.5, 6.8] },
+    };
+
+    let camAnim = null;
+    function flyToPreset(name) {
+      const p = CAMERA_PRESETS[name];
+      if (!p) return;
+      camAnim = {
+        startPos: camera.position.clone(),
+        endPos: new THREE.Vector3(...p.pos),
+        startTarget: controls.target.clone(),
+        endTarget: new THREE.Vector3(...p.target),
+        progress: 0,
+        duration: 1.05,
+      };
+      document.querySelectorAll('#camera-presets .chip-btn').forEach(btn => {
+        btn.classList.toggle('active', btn.dataset.cam === name);
+      });
+    }
+
+    // Cancel fly-to if user drags camera manually
+    controls.addEventListener('start', () => {
+      camAnim = null;
+    });
+
+    // =========================================================================
+    // 13. INTERACTIVE RAYCASTING (Click island for playful voxel bursts!)
+    // =========================================================================
+    const raycaster = new THREE.Raycaster();
+    const pointer = new THREE.Vector2();
+    let pointerDownPos = { x: 0, y: 0 };
+
+    renderer.domElement.addEventListener('pointerdown', (e) => {
+      pointerDownPos = { x: e.clientX, y: e.clientY };
+    });
+
+    renderer.domElement.addEventListener('pointerup', (e) => {
+      const moveDist = Math.hypot(e.clientX - pointerDownPos.x, e.clientY - pointerDownPos.y);
+      if (moveDist > 6 || e.button !== 0) return;
+
+      pointer.x = (e.clientX / window.innerWidth) * 2 - 1;
+      pointer.y = -(e.clientY / window.innerHeight) * 2 + 1;
+      raycaster.setFromCamera(pointer, camera);
+
+      const hits = raycaster.intersectObjects([brickMesh, oceanMesh], false);
+      if (hits.length > 0) {
+        const pt = hits[0].point.clone();
+        pt.y += 0.6;
+        spawnVoxelBurst(pt, 26, 6.0, false);
+      }
+    });
+
+    // =========================================================================
+    // 14. UI BINDINGS
+    // =========================================================================
+    const btnPlay = document.getElementById('btn-play');
+    const btnRotate = document.getElementById('btn-rotate');
+    const btnStuds = document.getElementById('btn-studs');
+    const btnFirework = document.getElementById('btn-firework');
+    const btnZen = document.getElementById('btn-zen');
+    const hud = document.getElementById('hud');
+
+    btnPlay.addEventListener('click', () => {
+      isPlayingTime = !isPlayingTime;
+      btnPlay.textContent = isPlayingTime ? '⏸' : '▶';
+    });
+
+    timeSlider.addEventListener('input', (e) => {
+      timeOfDay = parseFloat(e.target.value);
+      isPlayingTime = false;
+      btnPlay.textContent = '▶';
+    });
+
+    document.querySelectorAll('[data-time]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        timeOfDay = parseFloat(btn.dataset.time);
+        timeSlider.value = timeOfDay.toFixed(2);
+      });
+    });
+
+    document.querySelectorAll('#camera-presets .chip-btn').forEach(btn => {
+      btn.addEventListener('click', () => flyToPreset(btn.dataset.cam));
+    });
+
+    btnRotate.addEventListener('click', () => {
+      controls.autoRotate = !controls.autoRotate;
+      btnRotate.classList.toggle('active', controls.autoRotate);
+    });
+
+    btnStuds.addEventListener('click', () => {
+      studMesh.visible = !studMesh.visible;
+      btnStuds.classList.toggle('active', studMesh.visible);
+    });
+
+    btnFirework.addEventListener('click', () => {
+      launchSkyFirework();
+      setTimeout(launchSkyFirework, 260);
+    });
+
+    btnZen.addEventListener('click', () => {
+      const isZen = hud.classList.toggle('zen');
+      btnZen.classList.toggle('active', isZen);
+    });
+
+    window.addEventListener('resize', () => {
+      camera.aspect = window.innerWidth / window.innerHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(window.innerWidth, window.innerHeight);
+    });
+
+    // =========================================================================
+    // 15. MAIN ANIMATION LOOP
+    // =========================================================================
+    const clock = new THREE.Clock();
+
+    function animate() {
+      requestAnimationFrame(animate);
+      const dt = Math.min(clock.getDelta(), 0.05);
+      const elapsed = clock.elapsedTime;
+
+      // Advance Day/Night cycle smoothly (1 full 24h cycle ≈ 75 seconds)
+      if (isPlayingTime) {
+        timeOfDay = (timeOfDay + dt * 0.32) % 24;
+        timeSlider.value = timeOfDay.toFixed(2);
+      }
+      applyTimeOfDay(timeOfDay, elapsed);
+
+      // Update ocean waves
+      oceanUniforms.uTime.value = elapsed;
+
+      // Rotate windmill sails
+      windmillSails.rotation.z -= dt * 1.15;
+
+      // Rotate lighthouse volumetric beam
+      lighthouseBeamGroup.rotation.y += dt * 0.72;
+
+      // Sailboat gentle cruise around the archipelago (radius 21.5)
+      const boatAngle = elapsed * 0.14;
+      const orbitR = 21.5;
+      const bx = Math.cos(boatAngle) * orbitR;
+      const bz = Math.sin(boatAngle) * orbitR;
+      sailboat.position.set(bx, 1.38 + Math.sin(elapsed * 2.4) * 0.09, bz);
+      sailboat.rotation.y = -boatAngle;
+      sailboat.rotation.z = Math.sin(elapsed * 1.9) * 0.06;
+      sailboat.rotation.x = Math.cos(elapsed * 1.5) * 0.04;
+
+      // Docked fishing boat gentle bob
+      fishingBoat.position.y = 1.34 + Math.sin(elapsed * 2.1 + 1.2) * 0.07;
+      fishingBoat.rotation.z = Math.sin(elapsed * 1.7) * 0.05;
+
+      // Drift fluffy clouds
+      for (const c of clouds) {
+        c.mesh.position.x += c.speed * dt;
+        c.mesh.position.y = c.baseY + Math.sin(elapsed * 0.6 + c.phase) * 0.35;
+        if (c.mesh.position.x > 46) c.mesh.position.x = -46;
+      }
+
+      // Glide voxel seagulls
+      for (const b of birds) {
+        b.angle += b.speed * dt;
+        const x = Math.cos(b.angle) * b.radius;
+        const z = Math.sin(b.angle) * b.radius;
+        b.group.position.set(x, b.height + Math.sin(elapsed * 1.5 + b.angle) * 0.6, z);
+        b.group.rotation.y = -b.angle;
+        const flap = Math.sin(elapsed * b.flapSpeed) * 0.48;
+        b.wingL.rotation.z = flap;
+        b.wingR.rotation.z = -flap;
+      }
+
+      // Animate Waterfall cascade & mist foam particles (pouring down x = 7..8, z = -3.2)
+      for (let i = 0; i < waterfallCount; i++) {
+        const w = waterfallData[i];
+        w.t = (w.t + dt * w.speed) % 1.0;
+        const wy = 7.4 - w.t * 5.45;
+        const wz = -3.55 + w.t * 0.95 + Math.sin(w.t * Math.PI) * 0.24 + w.zOff * 0.35;
+        const wx = 7.5 + w.xOff * 1.95;
+        const splashScale = w.t > 0.82 ? w.size * (1.2 + (w.t - 0.82) * 5.2) : w.size * 1.15;
+        dummy.position.set(wx, wy, wz);
+        dummy.scale.set(splashScale, splashScale * (w.t > 0.82 ? 0.55 : 1.55), splashScale);
+        dummy.rotation.set(0, 0, 0);
+        dummy.updateMatrix();
+        waterfallMesh.setMatrixAt(i, dummy.matrix);
+      }
+      waterfallMesh.instanceMatrix.needsUpdate = true;
+
+      // Animate Chimney Smoke cubes
+      for (let i = 0; i < smokeCount; i++) {
+        const s = smokeData[i];
+        s.t = (s.t + dt * s.speed) % 1.0;
+        const sx = s.origin.x + s.t * s.driftX + Math.sin(elapsed * 1.5 + i) * 0.14;
+        const sy = s.origin.y + s.t * 4.4;
+        const sz = s.origin.z + s.t * s.driftZ;
+        const sc = Math.sin(s.t * Math.PI) * 0.48;
+        dummy.position.set(sx, sy, sz);
+        dummy.scale.set(sc, sc, sc);
+        dummy.rotation.set(s.t * 2, s.t * 1.5, 0);
+        dummy.updateMatrix();
+        smokeMesh.setMatrixAt(i, dummy.matrix);
+      }
+      smokeMesh.instanceMatrix.needsUpdate = true;
+
+      // Animate Campfire Flames & Embers
+      for (let i = 0; i < fireCount; i++) {
+        const f = fireData[i];
+        f.t = (f.t + dt * f.speed) % 1.0;
+        const fx = fireX + Math.cos(f.angle + elapsed * 2.0) * f.rad * (1.0 - f.t * 0.65);
+        const fy = fireY + 0.15 + f.t * 1.65;
+        const fz = fireZ + Math.sin(f.angle + elapsed * 2.0) * f.rad * (1.0 - f.t * 0.65);
+        const sc = (1.0 - f.t) * 0.34 + 0.04;
+        dummy.position.set(fx, fy, fz);
+        dummy.scale.set(sc, sc * 1.2, sc);
+        dummy.rotation.set(0, f.t * 3, 0);
+        dummy.updateMatrix();
+        fireMesh.setMatrixAt(i, dummy.matrix);
+        // Core bright yellow -> orange -> ember red
+        if (f.t < 0.35) tmpColor.setHex(0xfff176);
+        else if (f.t < 0.72) tmpColor.setHex(0xff8f2b);
+        else tmpColor.setHex(0xe53935);
+        fireMesh.setColorAt(i, tmpColor);
+      }
+      fireMesh.instanceMatrix.needsUpdate = true;
+      fireMesh.instanceColor.needsUpdate = true;
+
+      // Animate Voxel Firework / Click Burst particles
+      let burstDirty = false;
+      for (let i = 0; i < burstMax; i++) {
+        const p = burstParticles[i];
+        if (!p.active) continue;
+        burstDirty = true;
+        p.life += dt;
+        if (p.life >= p.maxLife) {
+          p.active = false;
+          dummy.position.set(0, -100, 0);
+          dummy.scale.set(0.001, 0.001, 0.001);
+          dummy.updateMatrix();
+          burstMesh.setMatrixAt(i, dummy.matrix);
+          continue;
+        }
+        p.vel.y -= 9.8 * dt;
+        p.vel.multiplyScalar(1 - dt * 0.75);
+        p.pos.addScaledVector(p.vel, dt);
+        const k = 1.0 - p.life / p.maxLife;
+        const s = p.size * k;
+        dummy.position.copy(p.pos);
+        dummy.scale.set(s, s, s);
+        dummy.rotation.set(p.life * 5, p.life * 4, 0);
+        dummy.updateMatrix();
+        burstMesh.setMatrixAt(i, dummy.matrix);
+        burstMesh.setColorAt(i, p.color);
+      }
+      if (burstDirty) {
+        burstMesh.instanceMatrix.needsUpdate = true;
+        burstMesh.instanceColor.needsUpdate = true;
+      }
+      if (fireworkFlash.intensity > 0.05) {
+        fireworkFlash.intensity *= Math.pow(0.04, dt);
+      } else {
+        fireworkFlash.intensity = 0;
+      }
+
+      // Smooth Camera Preset Fly-to
+      if (camAnim) {
+        camAnim.progress += dt / camAnim.duration;
+        const t = Math.min(1, camAnim.progress);
+        const ease = 1 - Math.pow(1 - t, 3);
+        camera.position.lerpVectors(camAnim.startPos, camAnim.endPos, ease);
+        controls.target.lerpVectors(camAnim.startTarget, camAnim.endTarget, ease);
+        if (t >= 1) camAnim = null;
+      }
+
+      controls.update();
+      renderer.render(scene, camera);
+    }
+
+    // Dismiss loading screen smoothly once first frame is ready
+    animate();
+    requestAnimationFrame(() => {
+      document.getElementById('loader').classList.add('hidden');
+    });
+  </script>
+</body>
+</html>
