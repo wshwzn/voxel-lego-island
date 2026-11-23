@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>乐高体素海岛 · 豪华探索版 | Voxel LEGO Island</title>
+  <title>乐高群岛大冒险 2.0 | Voxel LEGO Archipelago</title>
   <link rel="stylesheet" href="./styles.css" />
   <script type="importmap">
     {
@@ -15,7 +15,6 @@
   </script>
 </head>
 <body>
-  <!-- Loading Screen -->
   <div id="loader">
     <div class="lego-spinner">
       <div class="lego-brick-dot"></div>
@@ -23,44 +22,41 @@
       <div class="lego-brick-dot"></div>
       <div class="lego-brick-dot"></div>
     </div>
-    <div id="loader-text">正在拼装乐高体素海岛豪华版…</div>
+    <div id="loader-text">正在拼装乐高群岛大冒险 2.0…</div>
   </div>
 
-  <!-- Flash overlay for lightning & postcard snapshot -->
   <div id="screen-flash"></div>
-
-  <!-- 3D WebGL Canvas Mount -->
   <div id="canvas-container"></div>
-
-  <!-- Floating Toast Notifications -->
   <div id="toast-container"></div>
 
-  <!-- HUD Layer -->
   <div class="hud" id="hud">
-    <!-- Top Left: Brand, Stats & Treasure Hunt -->
+    <!-- Top Left: Brand, Stats & 8-Mode Launcher -->
     <div class="glass-panel top-left hud-hideable">
       <div class="brand-row">
         <div class="brand-icon">🏝️</div>
         <div>
-          <div class="brand-title">乐高体素海岛 · 豪华版</div>
+          <div class="brand-title">乐高群岛大冒险 2.0</div>
           <div class="brand-sub">
             <span class="pill" id="stat-bricks">🧱 0 块</span>
-            <span class="pill" id="stat-studs">⚪ 0 凸点</span>
-            <span class="pill treasure-pill" id="stat-chests" title="在海岛各处寻找发光的乐高金宝箱">💎 宝箱 0/5</span>
+            <span class="pill treasure-pill" id="stat-chests" title="在主岛、海盗岛、过山车岛与天空神殿寻找 8 个金宝箱">💎 宝箱 0/8</span>
+            <span class="pill fish-pill" id="stat-fishdex" title="码头钓鱼收集 8 种海洋图鉴">🐟 图鉴 0/8</span>
           </div>
         </div>
       </div>
 
-      <!-- Mode Switcher Tabs -->
       <div class="mode-tabs">
-        <button class="mode-tab active" data-mode="explore">🧭 自由漫游</button>
-        <button class="mode-tab" data-mode="walk">🚶 岛上漫步</button>
-        <button class="mode-tab" data-mode="build">🧱 拼装积木</button>
-        <button class="mode-tab" data-mode="sail">⛵ 亲自开船</button>
+        <button class="mode-tab active" data-mode="explore">🧭 漫游</button>
+        <button class="mode-tab" data-mode="walk">🚶 漫步</button>
+        <button class="mode-tab" data-mode="sail">⛵ 开船</button>
+        <button class="mode-tab" data-mode="flight">✈️ 飞翔</button>
+        <button class="mode-tab" data-mode="coaster">🎢 过山车</button>
+        <button class="mode-tab" data-mode="cannon">💥 大炮</button>
+        <button class="mode-tab" data-mode="fish">🎣 钓鱼</button>
+        <button class="mode-tab" data-mode="build">🧱 拼装</button>
       </div>
     </div>
 
-    <!-- Top Right: Action & Toggle Buttons -->
+    <!-- Top Right: World Toggles -->
     <div class="top-right">
       <button class="icon-btn hud-hideable" id="btn-audio" title="开关沉浸式程序合成音效">🔇 <span class="label">音效</span></button>
       <button class="icon-btn hud-hideable" id="btn-volcano" title="切换雪山 / 活火山喷发模式">🌋 <span class="label">火山</span></button>
@@ -72,14 +68,14 @@
       <button class="icon-btn" id="btn-zen" title="纯净视角（隐藏界面）">👁️ <span class="label">纯净</span></button>
     </div>
 
-    <!-- Contextual Bar: Walk Mode Controls -->
+    <!-- Contextual Bar: Walk Mode -->
     <div class="glass-panel context-bar hud-hideable hidden" id="walk-bar">
       <div class="context-header">
-        <span class="context-title">🚶 漫步模式：<kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> 移动 · <kbd>Shift</kbd> 冲刺 · <kbd>Space</kbd> 跳跃 · <kbd>V</kbd> 切换视角 · 拖拽转镜头</span>
+        <span class="context-title">🚶 漫步：<kbd>WASD</kbd> 移动 · <kbd>Shift</kbd> 冲刺 · <kbd>Space</kbd> 跳跃/上岸 · <kbd>V</kbd> 换视角（踩红色弹跳垫起飞！）</span>
         <div class="context-actions">
-          <span class="pill" id="stat-walk-state">🥾 陆地漫步</span>
-          <button class="mini-btn" id="btn-walk-view" title="切换第一/第三人称 (V)">👁️ 第一人称</button>
-          <button class="mini-btn" id="btn-walk-exit">退出漫步</button>
+          <span class="pill" id="stat-walk-state">🥾 海拔 2m</span>
+          <button class="mini-btn" id="btn-walk-view">👁️ 第一人称</button>
+          <button class="mini-btn" id="btn-walk-exit">退出</button>
         </div>
       </div>
       <div class="outfit-row" id="walk-outfits">
@@ -87,38 +83,84 @@
         <button class="chip-btn active" data-outfit="explorer">🧭 探险家</button>
         <button class="chip-btn" data-outfit="pirate">🏴‍☠️ 海盗船长</button>
         <button class="chip-btn" data-outfit="astronaut">👨‍🚀 宇航员</button>
-        <button class="mini-btn" id="btn-walk-respawn" title="回到港口广场">🏠 回广场</button>
+        <button class="mini-btn" id="btn-walk-respawn">🏠 回广场</button>
       </div>
     </div>
 
-    <!-- Contextual Bar: Build Mode Brick Palette -->
-    <div class="glass-panel context-bar hud-hideable hidden" id="build-bar">
-      <div class="context-header">
-        <span class="context-title">🧱 拼装模式：左键叠放积木 · 右键拆除 · 滚轮缩放</span>
-        <div class="context-actions">
-          <span class="pill" id="stat-built">已拼 0 块</span>
-          <button class="mini-btn" id="btn-build-undo" title="撤销上一块 (Ctrl+Z)">↩ 撤销</button>
-          <button class="mini-btn danger" id="btn-build-clear" title="清空所有自建积木">🗑️ 清空</button>
-        </div>
-      </div>
-      <div class="swatch-row" id="build-swatches"></div>
-    </div>
-
-    <!-- Contextual Bar: Sail Mode Controls -->
+    <!-- Contextual Bar: Sail Mode -->
     <div class="glass-panel context-bar hud-hideable hidden" id="sail-bar">
       <div class="sail-row">
-        <span class="context-title">⛵ 航海模式：<kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> 或方向键掌舵 · <kbd>Space</kbd> 鸣笛放信号弹</span>
+        <span class="context-title">⛵ 航海：<kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> 掌舵跨岛探索海盗岛与过山车岛 · <kbd>Space</kbd> 鸣笛放信号弹</span>
         <div class="sail-controls">
           <span class="pill" id="stat-speed">航速 0.0 节</span>
           <button class="mini-btn" id="btn-sail-horn">📯 鸣笛</button>
-          <button class="mini-btn" id="btn-sail-exit">退出开船</button>
+          <button class="mini-btn" id="btn-sail-exit">退出</button>
         </div>
       </div>
+    </div>
+
+    <!-- Contextual Bar: Flight Mode -->
+    <div class="glass-panel context-bar hud-hideable hidden" id="flight-bar">
+      <div class="sail-row">
+        <span class="context-title">✈️ 飞行：<kbd>A</kbd><kbd>D</kbd> 压坡转向 · <kbd>W</kbd> 爬升 / <kbd>S</kbd> 俯冲 · <kbd>Shift</kbd> 涡轮加速 · <kbd>Space</kbd> 放礼花</span>
+        <div class="sail-controls">
+          <span class="pill treasure-pill" id="stat-rings">⭕ 飞环 0/10</span>
+          <button class="mini-btn" id="btn-flight-reset">🔄 重置飞环</button>
+          <button class="mini-btn" id="btn-flight-exit">退出</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Contextual Bar: Roller Coaster Ride -->
+    <div class="glass-panel context-bar hud-hideable hidden" id="coaster-bar">
+      <div class="sail-row">
+        <span class="context-title">🎢 正在乘坐乐高过山车（第一人称前排视角）！尽情享受极速俯冲与海上回旋！</span>
+        <div class="sail-controls">
+          <button class="mini-btn" id="btn-coaster-exit">下车返回</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Contextual Bar: LEGO Harbor Cannon -->
+    <div class="glass-panel context-bar hud-hideable hidden" id="cannon-bar">
+      <div class="sail-row">
+        <span class="context-title">💥 乐高大炮：移动鼠标瞄准海面海盗靶船，左键开炮把靶船轰成漫天乐高散件！</span>
+        <div class="sail-controls">
+          <span class="pill treasure-pill" id="stat-cannon-score">🎯 击沉 0 艘</span>
+          <button class="mini-btn" id="btn-cannon-exit">退出</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Contextual Bar: Pier Fishing Mini-Game -->
+    <div class="glass-panel context-bar hud-hideable hidden" id="fish-bar">
+      <div class="context-header">
+        <span class="context-title" id="fish-status">🎣 码头垂钓：点击抛竿或按 <kbd>Space</kbd>，咬钩时迅速收杆解锁图鉴！</span>
+        <div class="context-actions">
+          <button class="mini-btn highlight-btn" id="btn-fish-action">🎣 抛竿</button>
+          <button class="mini-btn" id="btn-fish-exit">收起鱼竿</button>
+        </div>
+      </div>
+      <div class="fish-dex-row" id="fish-dex-row"></div>
+    </div>
+
+    <!-- Contextual Bar: Build Mode Workshop -->
+    <div class="glass-panel context-bar hud-hideable hidden" id="build-bar">
+      <div class="context-header">
+        <span class="context-title">🧱 乐高工坊：左键叠放 · 右键拆除（支持在全部岛屿上自由建造！）</span>
+        <div class="context-actions">
+          <span class="pill" id="stat-built">已拼 0 块</span>
+          <button class="mini-btn" id="btn-build-share" title="生成包含你自建作品的分享链接">🔗 分享海岛</button>
+          <button class="mini-btn" id="btn-build-undo" title="撤销 (Ctrl+Z)">↩ 撤销</button>
+          <button class="mini-btn danger" id="btn-build-clear">🗑️ 清空</button>
+        </div>
+      </div>
+      <div class="outfit-row" id="build-prefabs"></div>
+      <div class="swatch-row" id="build-swatches"></div>
     </div>
 
     <!-- Bottom Control Dock -->
     <div class="glass-panel bottom-dock hud-hideable">
-      <!-- Row 1: Time of Day + Time Presets -->
       <div class="dock-row">
         <div class="time-block">
           <button class="play-btn" id="btn-play" title="播放/暂停昼夜循环">⏸</button>
@@ -135,7 +177,6 @@
 
       <div class="divider"></div>
 
-      <!-- Row 2: Weather Selector + Camera Viewpoints -->
       <div class="dock-row">
         <div class="preset-group" id="weather-presets">
           <button class="chip-btn active" data-weather="clear">☀️ 晴朗</button>
@@ -149,8 +190,9 @@
           <button class="chip-btn" data-cam="village">🏘️ 小镇</button>
           <button class="chip-btn" data-cam="lighthouse">🚨 灯塔</button>
           <button class="chip-btn" data-cam="waterfall">⛰️ 瀑布</button>
-          <button class="chip-btn" data-cam="beach">🔥 海滩</button>
-          <button class="chip-btn" data-cam="balloon">🎈 热气球</button>
+          <button class="chip-btn" data-cam="pirate">🏴‍☠️ 海盗岛</button>
+          <button class="chip-btn" data-cam="coaster">🎢 过山车</button>
+          <button class="chip-btn" data-cam="skytemple">☁️ 天空神殿</button>
         </div>
       </div>
     </div>

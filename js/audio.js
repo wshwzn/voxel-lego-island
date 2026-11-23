@@ -317,4 +317,111 @@ export class SoundEngine {
     osc.start(now);
     osc.stop(now + 0.17);
   }
+
+  playBouncePad() {
+    if (!this.enabled || !this.ctx) return;
+    const now = this.ctx.currentTime;
+    const osc = this.ctx.createOscillator();
+    const gain = this.ctx.createGain();
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(180, now);
+    osc.frequency.exponentialRampToValueAtTime(860, now + 0.22);
+    gain.gain.setValueAtTime(0.22, now);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.28);
+    osc.connect(gain);
+    gain.connect(this.masterGain);
+    osc.start(now);
+    osc.stop(now + 0.3);
+  }
+
+  playCannonBlast() {
+    if (!this.enabled || !this.ctx || !this.noiseBuffer) return;
+    const now = this.ctx.currentTime;
+    // Sub punch
+    const osc = this.ctx.createOscillator();
+    const oGain = this.ctx.createGain();
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(130, now);
+    osc.frequency.exponentialRampToValueAtTime(34, now + 0.32);
+    oGain.gain.setValueAtTime(0.45, now);
+    oGain.gain.exponentialRampToValueAtTime(0.001, now + 0.38);
+    osc.connect(oGain);
+    oGain.connect(this.masterGain);
+    osc.start(now);
+    osc.stop(now + 0.4);
+
+    // Explosive crack
+    const src = this.ctx.createBufferSource();
+    src.buffer = this.noiseBuffer;
+    const filter = this.ctx.createBiquadFilter();
+    filter.type = 'lowpass';
+    filter.frequency.setValueAtTime(1200, now);
+    filter.frequency.exponentialRampToValueAtTime(110, now + 0.55);
+    const nGain = this.ctx.createGain();
+    nGain.gain.setValueAtTime(0.38, now);
+    nGain.gain.exponentialRampToValueAtTime(0.001, now + 0.6);
+    src.connect(filter);
+    filter.connect(nGain);
+    nGain.connect(this.masterGain);
+    src.start(now);
+    src.stop(now + 0.65);
+  }
+
+  playLegoSmash() {
+    if (!this.enabled || !this.ctx) return;
+    const now = this.ctx.currentTime;
+    // Rapid cascade of LEGO plastic clatters!
+    for (let i = 0; i < 6; i++) {
+      const t = now + i * 0.042 + Math.random() * 0.02;
+      const osc = this.ctx.createOscillator();
+      const gain = this.ctx.createGain();
+      osc.type = 'triangle';
+      const f = 520 + Math.random() * 780;
+      osc.frequency.setValueAtTime(f, t);
+      osc.frequency.exponentialRampToValueAtTime(f * 0.45, t + 0.05);
+      gain.gain.setValueAtTime(0.16, t);
+      gain.gain.exponentialRampToValueAtTime(0.001, t + 0.06);
+      osc.connect(gain);
+      gain.connect(this.masterGain);
+      osc.start(t);
+      osc.stop(t + 0.07);
+    }
+  }
+
+  playRingChime(combo = 1) {
+    if (!this.enabled || !this.ctx) return;
+    const now = this.ctx.currentTime;
+    const base = 440 * Math.pow(1.06, Math.min(12, combo));
+    [base, base * 1.25, base * 1.5].forEach((freq, i) => {
+      const osc = this.ctx.createOscillator();
+      const gain = this.ctx.createGain();
+      osc.type = 'triangle';
+      const t = now + i * 0.055;
+      osc.frequency.setValueAtTime(freq, t);
+      gain.gain.setValueAtTime(0.16, t);
+      gain.gain.exponentialRampToValueAtTime(0.001, t + 0.28);
+      osc.connect(gain);
+      gain.connect(this.masterGain);
+      osc.start(t);
+      osc.stop(t + 0.3);
+    });
+  }
+
+  playFishBite() {
+    if (!this.enabled || !this.ctx) return;
+    const now = this.ctx.currentTime;
+    [660, 880].forEach((f, i) => {
+      const osc = this.ctx.createOscillator();
+      const gain = this.ctx.createGain();
+      osc.type = 'sine';
+      const t = now + i * 0.08;
+      osc.frequency.setValueAtTime(f, t);
+      gain.gain.setValueAtTime(0.18, t);
+      gain.gain.exponentialRampToValueAtTime(0.001, t + 0.14);
+      osc.connect(gain);
+      gain.connect(this.masterGain);
+      osc.start(t);
+      osc.stop(t + 0.15);
+    });
+  }
 }

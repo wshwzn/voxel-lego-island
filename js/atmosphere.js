@@ -14,7 +14,7 @@ const KEYFRAMES = [
 ];
 
 function createCoastDistanceTexture(landFootprint) {
-  const size = 64;
+  const size = 128;
   const half = size / 2;
   const data = new Uint8Array(size * size * 4);
   const landPts = [];
@@ -26,7 +26,7 @@ function createCoastDistanceTexture(landFootprint) {
     for (let ix = 0; ix < size; ix++) {
       const wx = ix - half;
       const wz = iz - half;
-      let minD = 999;
+      let minD = 9999;
       for (let j = 0; j < landPts.length; j++) {
         const dx = wx - landPts[j][0];
         const dz = wz - landPts[j][1];
@@ -66,7 +66,7 @@ export function createAtmosphere(scene, world, entities, onLightning) {
     uNightFactor: { value: 0.0 },
   };
 
-  const oceanGeo = new THREE.PlaneGeometry(340, 340, 140, 140);
+  const oceanGeo = new THREE.PlaneGeometry(460, 460, 160, 160);
   oceanGeo.rotateX(-Math.PI / 2);
 
   const oceanMat = new THREE.ShaderMaterial({
@@ -112,7 +112,7 @@ export function createAtmosphere(scene, world, entities, onLightning) {
       varying vec3 vNormal;
 
       void main() {
-        vec2 coastUV = (vWorldPos.xz + 32.0) / 64.0;
+        vec2 coastUV = (vWorldPos.xz + 64.0) / 128.0;
         float coastDist = 1.0;
         if (coastUV.x >= 0.0 && coastUV.x <= 1.0 && coastUV.y >= 0.0 && coastUV.y <= 1.0) {
           coastDist = texture2D(uCoastMap, coastUV).r;
@@ -330,14 +330,14 @@ export function createAtmosphere(scene, world, entities, onLightning) {
   const sunLight = new THREE.DirectionalLight(0xfff6e5, 2.1);
   sunLight.castShadow = true;
   sunLight.shadow.mapSize.set(2048, 2048);
-  sunLight.shadow.camera.left = -28;
-  sunLight.shadow.camera.right = 28;
-  sunLight.shadow.camera.top = 28;
-  sunLight.shadow.camera.bottom = -28;
+  sunLight.shadow.camera.left = -56;
+  sunLight.shadow.camera.right = 56;
+  sunLight.shadow.camera.top = 56;
+  sunLight.shadow.camera.bottom = -56;
   sunLight.shadow.camera.near = 5;
-  sunLight.shadow.camera.far = 110;
+  sunLight.shadow.camera.far = 160;
   sunLight.shadow.bias = -0.0007;
-  sunLight.shadow.normalBias = 0.038;
+  sunLight.shadow.normalBias = 0.045;
   scene.add(sunLight);
 
   const villageLight = new THREE.PointLight(0xffb554, 0, 22, 1.5);

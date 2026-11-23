@@ -298,7 +298,7 @@ export class PlayerController {
   getGroundHeightAt(x, z, maxReachY) {
     const gx = Math.round(x);
     const gz = Math.round(z);
-    const topScan = Math.min(24, Math.floor(maxReachY));
+    const topScan = Math.min(48, Math.floor(maxReachY));
     for (let gy = topScan; gy >= 0; gy--) {
       if (this.isSolidVoxel(gx, gy, gz)) {
         // Make sure there's space for the minifigure above this brick
@@ -359,9 +359,9 @@ export class PlayerController {
     const stepX = moveDir.x * baseSpeed * dt;
     const stepZ = moveDir.z * baseSpeed * dt;
 
-    // 2. Horizontal Movement with Wall Sliding + 1-Block Auto Step-Up
+    // 2. Horizontal Movement with Wall Sliding + 1-Block Auto Step-Up (Full Archipelago!)
     const tryMoveAxis = (nx, nz) => {
-      if (Math.hypot(nx, nz) > 36) return false;
+      if (Math.hypot(nx, nz) > 62) return false;
       if (this.isWallBlocked(nx, nz, this.pos.y)) return false;
       // Allow climbing up to 1.05 blocks smoothly
       const nextGround = this.getGroundHeightAt(nx, nz, this.pos.y + 1.05);
@@ -410,6 +410,17 @@ export class PlayerController {
           this.grounded = false;
           this.coyoteTimer = Math.max(0, this.coyoteTimer - dt);
         }
+      }
+
+      // Check Bouncy LEGO Trampoline Pad underneath feet!
+      const footGx = Math.round(this.pos.x);
+      const footGy = Math.round(this.pos.y - 1);
+      const footGz = Math.round(this.pos.z);
+      if (this.grounded && this.buildSystem.isBouncePadAt(footGx, footGy, footGz)) {
+        this.velY = 17.8;
+        this.grounded = false;
+        this.coyoteTimer = 0;
+        this.audio.playBouncePad();
       }
     } else {
       // Over water (ocean or crystal lagoon)

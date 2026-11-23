@@ -441,7 +441,7 @@ export function createLivingEntities(scene, world, legoBrickTex, onWaterSplash) 
   // -------------------------------------------------------------------------
   // UPDATE LOOP FOR ALL LIVING ENTITIES
   // -------------------------------------------------------------------------
-  function update(dt, elapsed, { nightFactor, weather, sailMode, keys }) {
+  function update(dt, elapsed, { nightFactor, weather, sailMode, flightMode, keys }) {
     const windMul = weather === 'storm' ? 2.4 : weather === 'rain' ? 1.5 : 1.0;
 
     // Windmill & Lighthouse beam
@@ -580,13 +580,14 @@ export function createLivingEntities(scene, world, legoBrickTex, onWaterSplash) 
     burnerFlame.scale.set(0.85, 0.7 + burnerFlicker * 0.5, 0.85);
     balloonGlow.intensity = (1.8 + nightFactor * 9.5) * burnerFlicker;
 
-    // Seaplane scenic circle
-    const pAngle = -elapsed * 0.34;
-    const pRad = 28;
-    seaplane.position.set(Math.cos(pAngle) * pRad, 22.5 + Math.sin(elapsed * 0.9) * 1.1, Math.sin(pAngle) * pRad);
-    seaplane.rotation.y = -pAngle + Math.PI;
-    seaplane.rotation.z = -0.22;
-    propeller.rotation.z += dt * 28;
+    // Seaplane scenic circle (paused when player is piloting in Flight Mode)
+    if (!flightMode) {
+      const pAngle = -elapsed * 0.34;
+      const pRad = 28;
+      seaplane.position.set(Math.cos(pAngle) * pRad, 22.5 + Math.sin(elapsed * 0.9) * 1.1, Math.sin(pAngle) * pRad);
+      seaplane.rotation.set(0, -pAngle + Math.PI, -0.22);
+    }
+    propeller.rotation.z += dt * (flightMode ? 42 : 28);
 
     // Clouds & Seagulls
     for (const c of clouds) {
@@ -624,6 +625,7 @@ export function createLivingEntities(scene, world, legoBrickTex, onWaterSplash) 
     boatState,
     boatLantern,
     hotAirBalloon,
+    seaplane,
     beamMat,
     cloudMat,
     update,

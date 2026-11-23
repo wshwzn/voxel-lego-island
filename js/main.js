@@ -1,12 +1,21 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
-import { BUILD_SWATCHES, CAMERA_PRESETS, createLegoBrickTexture, showToast } from './config.js';
+import {
+  BUILD_SWATCHES,
+  BUILD_PREFABS,
+  CAMERA_PRESETS,
+  FISH_CATALOG,
+  createLegoBrickTexture,
+  showToast,
+} from './config.js';
 import { SoundEngine } from './audio.js';
 import { buildIslandWorld } from './worldBuilder.js';
+import { buildArchipelago } from './archipelago.js';
 import { createLivingEntities } from './livingEntities.js';
 import { createAtmosphere } from './atmosphere.js';
 import { LegoBuildSystem } from './buildSystem.js';
 import { PlayerController } from './playerController.js';
+import { FlightSystem, CannonMiniGame, FishingMiniGame } from './minigames.js';
 
 // =========================================================================
 // 1. RENDERER, SCENE, CAMERA & ORBIT CONTROLS
@@ -15,7 +24,7 @@ const container = document.getElementById('canvas-container');
 const renderer = new THREE.WebGLRenderer({
   antialias: true,
   powerPreference: 'high-performance',
-  preserveDrawingBuffer: true, // Enables crisp Postcard PNG snapshots
+  preserveDrawingBuffer: true,
 });
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 renderer.setSize(window.innerWidth, window.innerHeight);
@@ -26,35 +35,35 @@ renderer.toneMappingExposure = 1.08;
 container.appendChild(renderer.domElement);
 
 const scene = new THREE.Scene();
-scene.fog = new THREE.FogExp2(0x9bd2f5, 0.0046);
+scene.fog = new THREE.FogExp2(0x9bd2f5, 0.0029);
 
-const camera = new THREE.PerspectiveCamera(42, window.innerWidth / window.innerHeight, 0.5, 420);
+const camera = new THREE.PerspectiveCamera(44, window.innerWidth / window.innerHeight, 0.5, 540);
 camera.position.set(...CAMERA_PRESETS.overview.pos);
 
 const controls = new OrbitControls(camera, renderer.domElement);
 controls.enableDamping = true;
 controls.dampingFactor = 0.06;
-controls.maxPolarAngle = Math.PI * 0.478;
-controls.minPolarAngle = 0.14;
+controls.maxPolarAngle = Math.PI * 0.482;
+controls.minPolarAngle = 0.12;
 controls.minDistance = 4.2;
-controls.maxDistance = 85;
+controls.maxDistance = 135;
 controls.target.set(...CAMERA_PRESETS.overview.target);
 controls.autoRotate = true;
-controls.autoRotateSpeed = 0.45;
+controls.autoRotateSpeed = 0.36;
 
 // =========================================================================
-// 2. CORE SYSTEMS INITIALIZATION
+// 2. CORE WORLD + ARCHIPELAGO + AUDIO + PARTICLE BURSTS
 // =========================================================================
 const audio = new SoundEngine();
 const legoBrickTex = createLegoBrickTexture();
 const world = buildIslandWorld(scene, legoBrickTex);
+const archipelago = buildArchipelago(scene, world, legoBrickTex);
 
-// Particle Burst Engine (Fireworks, Click Confetti, Water Splashes, Treasure Gold, Volcano Eruption)
 const dummy = new THREE.Object3D();
 const tmpColor = new THREE.Color();
 const particleGeo = new THREE.BoxGeometry(1, 1, 1);
 
-const burstMax = 380;
+const burstMax = 420;
 const burstMesh = new THREE.InstancedMesh(particleGeo, new THREE.MeshBasicMaterial({ color: 0xffffff }), burstMax);
 burstMesh.frustumCulled = false;
 const burstParticles = [];
@@ -79,7 +88,7 @@ burstMesh.instanceMatrix.needsUpdate = true;
 burstMesh.instanceColor.needsUpdate = true;
 scene.add(burstMesh);
 
-const fireworkFlash = new THREE.PointLight(0xffaa55, 0, 42);
+const fireworkFlash = new THREE.PointLight(0xffaa55, 0, 48);
 scene.add(fireworkFlash);
 
 const FIREWORK_COLORS = [0xff5e7e, 0xffd166, 0x4cc9f0, 0x72efdd, 0xb388ff, 0xff9f43, 0x69f0ae];
@@ -116,9 +125,9 @@ function spawnBurst(origin, count = 42, speed = 8.5, { isFirework = false, singl
 }
 
 function launchSkyFirework() {
-  const rx = (Math.random() - 0.5) * 24;
-  const rz = (Math.random() - 0.5) * 20;
-  const ry = 16 + Math.random() * 8;
+  const rx = (Math.random() - 0.5) * 40;
+  const rz = (Math.random() - 0.5) * 32;
+  const ry = 18 + Math.random() * 12;
   spawnBurst(new THREE.Vector3(rx, ry, rz), 54, 10.5, { isFirework: true });
 }
 
@@ -132,25 +141,26 @@ function triggerScreenFlash(opacity = 0.55) {
   setTimeout(() => { flash.style.opacity = '0'; }, 90);
 }
 
+// Living Entities + Expanded Archipelago Atmosphere
 const entities = createLivingEntities(scene, world, legoBrickTex, onWaterSplash);
 const atmosphere = createAtmosphere(scene, world, entities, () => {
   triggerScreenFlash(0.32);
   audio.playThunder();
 });
 
+// Brick Counter + Super LEGO Workshop Builder
 const statBricks = document.getElementById('stat-bricks');
-const statStuds = document.getElementById('stat-studs');
 const statBuilt = document.getElementById('stat-built');
 
 function updateBrickCounters(userCount) {
   statBricks.textContent = `🧱 ${(world.baseBrickCount + userCount).toLocaleString()} 块`;
-  statStuds.textContent = `⚪ ${(world.baseStudCount + userCount).toLocaleString()} 凸点`;
   statBuilt.textContent = `已拼 ${userCount} 块`;
 }
 
 const buildSystem = new LegoBuildSystem(
   scene,
   world,
+  [archipelago.archBrickMesh],
   legoBrickTex,
   audio,
   (pos, cnt, spd, col) => spawnBurst(pos, cnt, spd, { singleColor: col }),
@@ -158,28 +168,84 @@ const buildSystem = new LegoBuildSystem(
 );
 updateBrickCounters(buildSystem.getCount());
 
+// Treasure Hunt (8 Legendary Archipelago Chests!)
 let foundChests = 0;
 const statChests = document.getElementById('stat-chests');
+const totalChests = world.chests.length;
+statChests.textContent = `💎 宝箱 0/${totalChests}`;
 
 function openTreasureChest(chest) {
   if (!chest || chest.opened) return;
   chest.opened = true;
   foundChests++;
-  statChests.textContent = `💎 宝箱 ${foundChests}/5`;
+  statChests.textContent = `💎 宝箱 ${foundChests}/${totalChests}`;
   audio.playTreasureFanfare();
   spawnBurst(chest.worldPos, 48, 8.2, { singleColor: 0xffd23f });
-  if (foundChests === world.chests.length) {
-    showToast('🏆 恭喜找齐全部 5 个乐高秘宝！盛大烟花秀开启！');
-    for (let i = 0; i < 6; i++) setTimeout(launchSkyFirework, i * 320);
+  if (foundChests === totalChests) {
+    showToast(`🏆 传奇达成！全部 ${totalChests} 个群岛秘宝已集齐，盛大烟花庆典开启！`);
+    for (let i = 0; i < 7; i++) setTimeout(launchSkyFirework, i * 300);
   } else {
-    showToast(`💎 发现「${chest.name}」！（${foundChests}/5）`);
+    showToast(`💎 发现「${chest.name}」！（${foundChests}/${totalChests}）`);
   }
 }
 
+// Player Walk Controller
 const player = new PlayerController(scene, world, buildSystem, audio, onWaterSplash, openTreasureChest);
 
+// Mini-Games: Flight + Sky Rings, Harbor Cannon, Pier Fishing
+const statRings = document.getElementById('stat-rings');
+const flightSystem = new FlightSystem(
+  scene,
+  entities.seaplane,
+  audio,
+  (pos, cnt, spd, isFw) => spawnBurst(pos, cnt, spd, { isFirework: isFw }),
+  () => {
+    showToast('🏆 王牌飞行员！全部 10 个群岛飞环挑战通关！');
+    for (let i = 0; i < 6; i++) setTimeout(launchSkyFirework, i * 280);
+  }
+);
+
+const statCannonScore = document.getElementById('stat-cannon-score');
+const cannonGame = new CannonMiniGame(
+  scene,
+  legoBrickTex,
+  audio,
+  (pos, cnt, spd, col) => spawnBurst(pos, cnt, spd, { singleColor: col }),
+  (score) => { statCannonScore.textContent = `🎯 击沉 ${score} 艘`; }
+);
+
+const statFishDex = document.getElementById('stat-fishdex');
+const fishStatusEl = document.getElementById('fish-status');
+const btnFishAction = document.getElementById('btn-fish-action');
+const fishDexRow = document.getElementById('fish-dex-row');
+
+function renderFishDex(caughtSet) {
+  statFishDex.textContent = `🐟 图鉴 ${caughtSet.size}/${FISH_CATALOG.length}`;
+  fishDexRow.innerHTML = '';
+  FISH_CATALOG.forEach((f) => {
+    const caught = caughtSet.has(f.id);
+    const badge = document.createElement('span');
+    badge.className = `fish-badge${caught ? ' caught' : ''}`;
+    badge.textContent = caught ? `${f.icon} ${f.name}` : `❓ ${f.rarity}`;
+    badge.title = caught ? `${f.name}（${f.rarity}）` : '尚未钓获';
+    fishDexRow.appendChild(badge);
+  });
+}
+
+const fishingGame = new FishingMiniGame(
+  audio,
+  (pos, cnt, spd, col) => spawnBurst(pos, cnt, spd, { singleColor: col }),
+  ({ state, statusText, btnText, caughtSet }) => {
+    fishStatusEl.textContent = statusText;
+    btnFishAction.textContent = btnText;
+    btnFishAction.classList.toggle('biting-pulse', state === 'biting');
+    renderFishDex(caughtSet);
+  }
+);
+renderFishDex(fishingGame.caughtSet);
+
 // =========================================================================
-// 3. CONTINUOUS ENVIRONMENTAL PARTICLES (Waterfall, Smoke, Campfire, Volcano Lava)
+// 3. CONTINUOUS PARTICLES (Waterfall, Chimney Smoke, Campfire, Volcano Lava)
 // =========================================================================
 const waterfallCount = 56;
 const waterfallMesh = new THREE.InstancedMesh(
@@ -221,7 +287,6 @@ const fireData = Array.from({ length: fireCount }, () => ({
 }));
 scene.add(fireMesh);
 
-// Volcano Eruption Lava Bombs & Plume
 const lavaCount = 46;
 const lavaMesh = new THREE.InstancedMesh(particleGeo, new THREE.MeshBasicMaterial({ color: 0xffffff }), lavaCount);
 lavaMesh.visible = false;
@@ -236,14 +301,14 @@ const lavaData = Array.from({ length: lavaCount }, () => ({
 scene.add(lavaMesh);
 
 // =========================================================================
-// 4. APPLICATION STATE & CAMERA FLY-TO
+// 4. STATE, MODE SWITCHING & CAMERA FLY-TO
 // =========================================================================
 let timeOfDay = 10.2;
 let isPlayingTime = true;
-let weather = 'clear';      // clear | rain | storm | snow
+let weather = 'clear';
 let volcanoMode = false;
 let auroraEnabled = true;
-let appMode = 'explore';    // explore | walk | build | sail
+let appMode = 'explore'; // explore | walk | sail | flight | coaster | cannon | fish | build
 let snowAccumulation = 0;
 let lastAppliedSnow = 0;
 
@@ -251,41 +316,33 @@ const keys = { forward: false, backward: false, left: false, right: false, sprin
 
 let camAnim = null;
 function flyToPreset(name) {
-  if (appMode === 'sail' || appMode === 'walk') setAppMode('explore');
+  if (appMode !== 'explore' && appMode !== 'build') setAppMode('explore');
   const p = CAMERA_PRESETS[name];
   if (!p) return;
-
-  let endPos = new THREE.Vector3(...p.pos);
-  let endTarget = new THREE.Vector3(...p.target);
-  if (name === 'balloon') {
-    const bp = entities.hotAirBalloon.position;
-    endTarget = bp.clone().add(new THREE.Vector3(0, 2.5, 0));
-    endPos = bp.clone().add(new THREE.Vector3(12, 6, 14));
-  }
-
   camAnim = {
     startPos: camera.position.clone(),
-    endPos,
+    endPos: new THREE.Vector3(...p.pos),
     startTarget: controls.target.clone(),
-    endTarget,
+    endTarget: new THREE.Vector3(...p.target),
     progress: 0,
-    duration: 1.0,
+    duration: 1.05,
   };
   document.querySelectorAll('#camera-presets .chip-btn').forEach((btn) => {
     btn.classList.toggle('active', btn.dataset.cam === name);
   });
 }
 
-controls.addEventListener('start', () => {
-  camAnim = null;
-});
+controls.addEventListener('start', () => { camAnim = null; });
 
-// =========================================================================
-// 5. MODE SWITCHING (Explore / Walk / Build / Sail)
-// =========================================================================
-const walkBar = document.getElementById('walk-bar');
-const buildBar = document.getElementById('build-bar');
-const sailBar = document.getElementById('sail-bar');
+const modeBars = {
+  walk: document.getElementById('walk-bar'),
+  sail: document.getElementById('sail-bar'),
+  flight: document.getElementById('flight-bar'),
+  coaster: document.getElementById('coaster-bar'),
+  cannon: document.getElementById('cannon-bar'),
+  fish: document.getElementById('fish-bar'),
+  build: document.getElementById('build-bar'),
+};
 const statSpeed = document.getElementById('stat-speed');
 const statWalkState = document.getElementById('stat-walk-state');
 const btnWalkView = document.getElementById('btn-walk-view');
@@ -297,40 +354,71 @@ function syncWalkViewButton() {
 function setAppMode(nextMode) {
   const prevMode = appMode;
   appMode = nextMode;
+
   document.querySelectorAll('.mode-tab').forEach((btn) => {
     btn.classList.toggle('active', btn.dataset.mode === nextMode);
   });
 
-  if (prevMode === 'walk' && nextMode !== 'walk') {
-    player.exit(controls);
-  }
+  // Cleanly exit previous mode
+  if (prevMode === 'walk') player.exit(controls);
+  if (prevMode === 'flight') flightSystem.exit();
+  if (prevMode === 'cannon') cannonGame.exit(controls);
+  if (prevMode === 'coaster') controls.enabled = true;
 
   buildSystem.setActive(nextMode === 'build');
-  walkBar.classList.toggle('hidden', nextMode !== 'walk');
-  buildBar.classList.toggle('hidden', nextMode !== 'build');
-  sailBar.classList.toggle('hidden', nextMode !== 'sail');
-  container.classList.toggle('build-cursor', nextMode === 'build');
+  Object.entries(modeBars).forEach(([k, el]) => el.classList.toggle('hidden', k !== nextMode));
+  container.classList.toggle('build-cursor', nextMode === 'build' || nextMode === 'cannon');
+
+  if (nextMode !== 'explore') {
+    controls.autoRotate = false;
+    document.getElementById('btn-rotate').classList.remove('active');
+    camAnim = null;
+  }
 
   if (nextMode === 'walk') {
-    controls.autoRotate = false;
-    document.getElementById('btn-rotate').classList.remove('active');
-    camAnim = null;
     player.enter(camera, controls);
     syncWalkViewButton();
-    showToast('🚶 已化身乐高探险家！WASD 移动，Space 跳跃，V 切换第一人称');
-  } else if (nextMode === 'build') {
-    controls.autoRotate = false;
-    document.getElementById('btn-rotate').classList.remove('active');
-    showToast('🧱 拼装模式：左键点击积木面叠放，右键拆除，支持自动保存！');
+    showToast('🚶 已进入漫步模式！WASD 移动，Space 跳跃，V 切换第一人称');
   } else if (nextMode === 'sail') {
-    controls.autoRotate = false;
-    document.getElementById('btn-rotate').classList.remove('active');
-    camAnim = null;
-    showToast('⛵ 航海模式已开启！使用 WASD / 方向键亲自掌舵');
+    showToast('⛵ 航海模式：WASD 掌舵，可开往海盗骷髅岛和过山车岛！');
+  } else if (nextMode === 'flight') {
+    flightSystem.enter();
+    showToast('✈️ 水上飞机已起飞！穿过天空中的 10 个金色飞环挑战群岛吧！');
+  } else if (nextMode === 'coaster') {
+    controls.enabled = false;
+    showToast('🎢 系好安全带！乐高过山车第一人称发车啦！');
+  } else if (nextMode === 'cannon') {
+    cannonGame.enter(camera, controls);
+    showToast('💥 乐高大炮就位！移动鼠标瞄准海盗靶船，左键开炮轰碎它们！');
+  } else if (nextMode === 'fish') {
+    camAnim = {
+      startPos: camera.position.clone(),
+      endPos: new THREE.Vector3(7.5, 6.2, 20.5),
+      startTarget: controls.target.clone(),
+      endTarget: new THREE.Vector3(2.8, 1.8, 15.6),
+      progress: 0,
+      duration: 0.85,
+    };
+    showToast('🎣 来到木头码头啦！点击抛竿或按 Space 开始钓鱼');
+  } else if (nextMode === 'build') {
+    showToast('🧱 乐高工坊：可选预制件（含红色弹跳蹦床！）并一键生成分享链接');
   }
 }
 
-// Populate Build Swatches
+// Populate Build Prefabs & Swatches
+const prefabContainer = document.getElementById('build-prefabs');
+BUILD_PREFABS.forEach((pf, idx) => {
+  const btn = document.createElement('button');
+  btn.className = `chip-btn${idx === 0 ? ' active' : ''}`;
+  btn.textContent = pf.label;
+  btn.addEventListener('click', () => {
+    buildSystem.setPrefab(pf.id);
+    prefabContainer.querySelectorAll('.chip-btn').forEach((el) => el.classList.remove('active'));
+    btn.classList.add('active');
+  });
+  prefabContainer.appendChild(btn);
+});
+
 const swatchContainer = document.getElementById('build-swatches');
 BUILD_SWATCHES.forEach((sw, idx) => {
   const btn = document.createElement('button');
@@ -339,6 +427,8 @@ BUILD_SWATCHES.forEach((sw, idx) => {
   btn.title = sw.name;
   btn.addEventListener('click', () => {
     buildSystem.setSwatch(sw);
+    buildSystem.setPrefab('single');
+    prefabContainer.querySelectorAll('.chip-btn').forEach((el, i) => el.classList.toggle('active', i === 0));
     swatchContainer.querySelectorAll('.brick-swatch').forEach((el) => el.classList.remove('active'));
     btn.classList.add('active');
   });
@@ -346,7 +436,7 @@ BUILD_SWATCHES.forEach((sw, idx) => {
 });
 
 // =========================================================================
-// 6. INTERACTION: RAYCASTING (Chests, Build Mode, Fun Confetti Clicks)
+// 5. POINTER & KEYBOARD INTERACTIONS
 // =========================================================================
 const raycaster = new THREE.Raycaster();
 const pointer = new THREE.Vector2();
@@ -369,6 +459,9 @@ renderer.domElement.addEventListener('pointermove', (e) => {
   if (appMode === 'build') {
     updatePointer(e);
     buildSystem.updateHover(raycaster);
+  } else if (appMode === 'cannon') {
+    updatePointer(e);
+    cannonGame.aimAtPointer(raycaster);
   }
 });
 
@@ -378,11 +471,14 @@ renderer.domElement.addEventListener('pointerdown', (e) => {
     isDraggingFP = true;
     lastDragPos = { x: e.clientX, y: e.clientY };
   }
+  if (appMode === 'cannon' && e.button === 0) {
+    updatePointer(e);
+    cannonGame.aimAtPointer(raycaster);
+    cannonGame.fire();
+  }
 });
 
-window.addEventListener('pointerup', () => {
-  isDraggingFP = false;
-});
+window.addEventListener('pointerup', () => { isDraggingFP = false; });
 
 renderer.domElement.addEventListener('contextmenu', (e) => {
   if (appMode === 'build') e.preventDefault();
@@ -390,10 +486,9 @@ renderer.domElement.addEventListener('contextmenu', (e) => {
 
 renderer.domElement.addEventListener('pointerup', (e) => {
   const moveDist = Math.hypot(e.clientX - pointerDown.x, e.clientY - pointerDown.y);
-  if (moveDist > 6) return;
+  if (moveDist > 6 || appMode === 'cannon') return;
   updatePointer(e);
 
-  // Build Mode: Left click places brick, Right click removes user brick
   if (appMode === 'build') {
     if (e.button === 0) {
       buildSystem.updateHover(raycaster);
@@ -406,7 +501,7 @@ renderer.domElement.addEventListener('pointerup', (e) => {
 
   if (e.button !== 0) return;
 
-  // Check Hidden Treasure Chests first!
+  // Click Hidden Treasure Chests across ALL islands!
   const chestHits = raycaster.intersectObjects(world.chestHitMeshes, false);
   if (chestHits.length > 0) {
     const idx = chestHits[0].object.userData.chestIndex;
@@ -417,8 +512,7 @@ renderer.domElement.addEventListener('pointerup', (e) => {
     }
   }
 
-  // Otherwise spawn playful voxel confetti / water splash where clicked
-  const hits = raycaster.intersectObjects([world.brickMesh, atmosphere.oceanMesh], false);
+  const hits = raycaster.intersectObjects([world.brickMesh, archipelago.archBrickMesh, atmosphere.oceanMesh], false);
   if (hits.length > 0) {
     const pt = hits[0].point.clone();
     pt.y += 0.55;
@@ -428,7 +522,6 @@ renderer.domElement.addEventListener('pointerup', (e) => {
   }
 });
 
-// Keyboard shortcuts (WASD Walk/Sail + Space Jump/Horn + V Perspective + Shift Sprint + Ctrl+Z Undo)
 window.addEventListener('keydown', (e) => {
   if (e.code === 'KeyW' || e.code === 'ArrowUp') keys.forward = true;
   if (e.code === 'KeyS' || e.code === 'ArrowDown') keys.backward = true;
@@ -437,18 +530,16 @@ window.addEventListener('keydown', (e) => {
   if (e.code === 'ShiftLeft' || e.code === 'ShiftRight') keys.sprint = true;
 
   if (e.code === 'Space') {
-    if (appMode === 'walk') {
-      e.preventDefault();
-      player.jump();
-    } else if (appMode === 'sail') {
-      e.preventDefault();
-      triggerBoatHorn();
-    }
+    if (appMode === 'walk') { e.preventDefault(); player.jump(); }
+    else if (appMode === 'sail') { e.preventDefault(); triggerBoatHorn(); }
+    else if (appMode === 'flight') { e.preventDefault(); flightSystem.fireSmokeSalute(); }
+    else if (appMode === 'fish') { e.preventDefault(); fishingGame.castOrReel(); }
+    else if (appMode === 'cannon') { e.preventDefault(); cannonGame.fire(); }
   }
   if (e.code === 'KeyV' && appMode === 'walk') {
     const fp = player.togglePerspective(camera, controls);
     syncWalkViewButton();
-    showToast(fp ? '👁️ 已切换为第一人称视角（按住左键拖拽环顾四周）' : '🎥 已切换为第三人称追尾视角');
+    showToast(fp ? '👁️ 第一人称视角（按住左键拖拽环顾四周）' : '🎥 第三人称追尾视角');
   }
   if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z' && appMode === 'build') {
     e.preventDefault();
@@ -466,12 +557,11 @@ window.addEventListener('keyup', (e) => {
 
 function triggerBoatHorn() {
   audio.playBoatHorn();
-  const flarePos = entities.sailboat.position.clone().add(new THREE.Vector3(0, 6.2, 0));
-  spawnBurst(flarePos, 36, 7.8, { isFirework: true });
+  spawnBurst(entities.sailboat.position.clone().add(new THREE.Vector3(0, 6.2, 0)), 36, 7.8, { isFirework: true });
 }
 
 // =========================================================================
-// 7. POSTCARD PNG SNAPSHOT EXPORT
+// 6. POSTCARD SNAPSHOT & UI EVENT BINDINGS
 // =========================================================================
 function capturePostcard() {
   triggerScreenFlash(0.65);
@@ -485,7 +575,6 @@ function capturePostcard() {
   const ctx = out.getContext('2d');
   ctx.drawImage(src, 0, 0);
 
-  // Subtle postcard frame & watermark badge
   const pad = Math.round(out.width * 0.025);
   ctx.strokeStyle = 'rgba(255,255,255,0.45)';
   ctx.lineWidth = Math.max(3, Math.round(out.width * 0.004));
@@ -493,8 +582,8 @@ function capturePostcard() {
 
   const fontSize = Math.max(18, Math.round(out.width * 0.018));
   ctx.font = `700 ${fontSize}px "PingFang SC", "Microsoft YaHei", sans-serif`;
-  ctx.fillStyle = 'rgba(15, 22, 36, 0.62)';
-  const label = `🏝️ 乐高体素海岛 · ${document.getElementById('clock-label').textContent}`;
+  ctx.fillStyle = 'rgba(15, 22, 36, 0.65)';
+  const label = `🏝️ 乐高群岛大冒险 2.0 · ${document.getElementById('clock-label').textContent}`;
   const tw = ctx.measureText(label).width;
   const bx = out.width - pad - tw - 28;
   const by = out.height - pad - fontSize - 24;
@@ -503,15 +592,12 @@ function capturePostcard() {
   ctx.fillText(label, bx + 12, by + fontSize + 2);
 
   const link = document.createElement('a');
-  link.download = `voxel-lego-island-${Date.now()}.png`;
+  link.download = `voxel-lego-archipelago-${Date.now()}.png`;
   link.href = out.toDataURL('image/png');
   link.click();
-  showToast('📸 高清海岛明信片已保存到下载目录！');
+  showToast('📸 高清群岛明信片已保存到下载目录！');
 }
 
-// =========================================================================
-// 8. UI CONTROLS BINDING
-// =========================================================================
 const timeSlider = document.getElementById('time-slider');
 const clockLabel = document.getElementById('clock-label');
 const btnPlay = document.getElementById('btn-play');
@@ -551,7 +637,7 @@ document.querySelectorAll('#weather-presets .chip-btn').forEach((btn) => {
   btn.addEventListener('click', () => {
     weather = btn.dataset.weather;
     document.querySelectorAll('#weather-presets .chip-btn').forEach((b) => b.classList.toggle('active', b === btn));
-    const names = { clear: '☀️ 天气放晴啦', rain: '🌧️ 下起细雨了', storm: '⛈️ 雷暴来袭！注意闪电', snow: '❄️ 飘起体素雪花，海岛正在染白…' };
+    const names = { clear: '☀️ 群岛放晴啦', rain: '🌧️ 下起细雨了', storm: '⛈️ 雷暴来袭！注意闪电', snow: '❄️ 飘起体素雪花，海岛正在染白…' };
     showToast(names[weather]);
   });
 });
@@ -564,7 +650,7 @@ btnAudio.addEventListener('click', () => {
   const on = audio.toggle();
   btnAudio.innerHTML = on ? '🔊 <span class="label">音效</span>' : '🔇 <span class="label">音效</span>';
   btnAudio.classList.toggle('active', on);
-  if (on) showToast('🔊 已开启海浪、营火与乐高积木实时合成音效');
+  if (on) showToast('🔊 已开启海浪、大炮、钓鱼与乐高实时合成音效');
 });
 
 btnVolcano.addEventListener('click', () => {
@@ -590,9 +676,11 @@ document.getElementById('btn-firework').addEventListener('click', () => {
 document.getElementById('btn-photo').addEventListener('click', capturePostcard);
 
 btnStuds.addEventListener('click', () => {
-  world.studMesh.visible = !world.studMesh.visible;
-  buildSystem.setStudsVisible(world.studMesh.visible);
-  btnStuds.classList.toggle('active', world.studMesh.visible);
+  const next = !world.studMesh.visible;
+  world.studMesh.visible = next;
+  archipelago.archStudMesh.visible = next;
+  buildSystem.setStudsVisible(next);
+  btnStuds.classList.toggle('active', next);
 });
 
 btnRotate.addEventListener('click', () => {
@@ -605,20 +693,7 @@ btnZen.addEventListener('click', () => {
   btnZen.classList.toggle('active', isZen);
 });
 
-document.getElementById('btn-build-undo').addEventListener('click', () => buildSystem.undo());
-document.getElementById('btn-build-clear').addEventListener('click', () => {
-  if (buildSystem.getCount() > 0) {
-    buildSystem.clearAll();
-    showToast('🗑️ 已清空所有自建乐高积木');
-  }
-});
-
-document.getElementById('btn-sail-horn').addEventListener('click', triggerBoatHorn);
-document.getElementById('btn-sail-exit').addEventListener('click', () => {
-  setAppMode('explore');
-  flyToPreset('overview');
-});
-
+// Contextual Bar Buttons
 btnWalkView.addEventListener('click', () => {
   if (appMode !== 'walk') return;
   const fp = player.togglePerspective(camera, controls);
@@ -626,13 +701,9 @@ btnWalkView.addEventListener('click', () => {
   showToast(fp ? '👁️ 第一人称视角（左键拖拽环顾四周）' : '🎥 第三人称追尾视角');
 });
 
-document.getElementById('btn-walk-exit').addEventListener('click', () => {
-  setAppMode('explore');
-  flyToPreset('overview');
-});
-
+document.getElementById('btn-walk-exit').addEventListener('click', () => { setAppMode('explore'); flyToPreset('overview'); });
 document.getElementById('btn-walk-respawn').addEventListener('click', () => {
-  player.pos.set(2.5, 3.0, 4.5);
+  player.pos.set(2.5, 3.0, 5.2);
   player.visualY = 3.0;
   player.velY = 0;
   if (appMode === 'walk') player.enter(camera, controls);
@@ -644,6 +715,42 @@ document.querySelectorAll('#walk-outfits [data-outfit]').forEach((btn) => {
     player.setOutfit(btn.dataset.outfit);
     document.querySelectorAll('#walk-outfits [data-outfit]').forEach((b) => b.classList.toggle('active', b === btn));
   });
+});
+
+document.getElementById('btn-sail-horn').addEventListener('click', triggerBoatHorn);
+document.getElementById('btn-sail-exit').addEventListener('click', () => { setAppMode('explore'); flyToPreset('overview'); });
+
+document.getElementById('btn-flight-reset').addEventListener('click', () => {
+  flightSystem.resetRings();
+  statRings.textContent = '⭕ 飞环 0/10';
+  showToast('🔄 10 个金色飞环已重置！');
+});
+document.getElementById('btn-flight-exit').addEventListener('click', () => { setAppMode('explore'); flyToPreset('overview'); });
+document.getElementById('btn-coaster-exit').addEventListener('click', () => { setAppMode('explore'); flyToPreset('coaster'); });
+document.getElementById('btn-cannon-exit').addEventListener('click', () => { setAppMode('explore'); flyToPreset('overview'); });
+btnFishAction.addEventListener('click', () => fishingGame.castOrReel());
+document.getElementById('btn-fish-exit').addEventListener('click', () => { setAppMode('explore'); flyToPreset('overview'); });
+
+document.getElementById('btn-build-undo').addEventListener('click', () => buildSystem.undo());
+document.getElementById('btn-build-clear').addEventListener('click', () => {
+  if (buildSystem.getCount() > 0) {
+    buildSystem.clearAll();
+    showToast('🗑️ 已清空所有自建乐高积木');
+  }
+});
+document.getElementById('btn-build-share').addEventListener('click', async () => {
+  if (buildSystem.getCount() === 0) {
+    showToast('🧱 先在岛上拼几块乐高积木，再生成分享链接吧！');
+    return;
+  }
+  const url = buildSystem.getShareUrl();
+  window.history.replaceState(null, '', url);
+  try {
+    await navigator.clipboard.writeText(url);
+    showToast('🔗 专属海岛分享链接已复制到剪贴板！发给朋友即可参观');
+  } catch (_) {
+    showToast('🔗 分享链接已更新到浏览器地址栏，直接复制即可分享！');
+  }
 });
 
 window.addEventListener('resize', () => {
@@ -669,7 +776,7 @@ function formatClock(t) {
 }
 
 // =========================================================================
-// 9. MAIN 60FPS ANIMATION LOOP
+// 7. MAIN 60FPS ANIMATION LOOP
 // =========================================================================
 const clock = new THREE.Clock();
 
@@ -684,7 +791,6 @@ function animate() {
   }
   clockLabel.textContent = formatClock(timeOfDay);
 
-  // Smooth winter snow accumulation on terrain & roofs
   const targetSnow = weather === 'snow' ? 1.0 : 0.0;
   snowAccumulation += (targetSnow - snowAccumulation) * Math.min(1, dt * 0.65);
   if (Math.abs(snowAccumulation - lastAppliedSnow) > 0.025) {
@@ -694,9 +800,32 @@ function animate() {
 
   const nightFactor = atmosphere.update(dt, elapsed, { timeOfDay, weather, auroraEnabled, volcanoMode });
   audio.updateAmbient(dt, weather, nightFactor);
-  entities.update(dt, elapsed, { nightFactor, weather, sailMode: appMode === 'sail', keys });
 
-  // Walk Mode character update & live terrain/swim indicator
+  entities.update(dt, elapsed, {
+    nightFactor,
+    weather,
+    sailMode: appMode === 'sail',
+    flightMode: appMode === 'flight',
+    keys,
+  });
+
+  archipelago.update(dt, elapsed, {
+    nightFactor,
+    rideCoaster: appMode === 'coaster',
+    camera,
+    controls,
+  });
+
+  flightSystem.update(dt, elapsed, {
+    keys,
+    camera,
+    controls,
+    onRingCountChange: (c, total) => { statRings.textContent = `⭕ 飞环 ${c}/${total}`; },
+  });
+
+  cannonGame.update(dt, elapsed);
+  fishingGame.update(dt);
+
   if (appMode === 'walk') {
     player.update(dt, elapsed, { keys, camera, controls, nightFactor });
     statWalkState.textContent = player.swimming
@@ -704,13 +833,12 @@ function animate() {
       : `🥾 海拔 ${Math.max(0, Math.round(player.pos.y - 1))}m`;
   }
 
-  // Sail mode third-person chase camera
   if (appMode === 'sail') {
     const b = entities.boatState;
-    const chaseDist = 11.5;
+    const chaseDist = 12.0;
     const desiredCam = new THREE.Vector3(
       b.x - Math.sin(b.heading) * chaseDist,
-      6.8,
+      7.0,
       b.z - Math.cos(b.heading) * chaseDist
     );
     const desiredTarget = new THREE.Vector3(b.x, 2.5, b.z);
@@ -770,7 +898,7 @@ function animate() {
   fireMesh.instanceMatrix.needsUpdate = true;
   fireMesh.instanceColor.needsUpdate = true;
 
-  // Active Volcano Lava Bombs & Glowing Smoke
+  // Volcano eruption lava bombs
   if (volcanoMode) {
     for (let i = 0; i < lavaCount; i++) {
       const l = lavaData[i];
@@ -792,7 +920,7 @@ function animate() {
     lavaMesh.instanceColor.needsUpdate = true;
   }
 
-  // Burst particles (fireworks / water splashes / gold coins)
+  // Burst particles
   let burstDirty = false;
   for (let i = 0; i < burstMax; i++) {
     const p = burstParticles[i];
@@ -839,7 +967,11 @@ function animate() {
     if (t >= 1) camAnim = null;
   }
 
-  if (!(appMode === 'walk' && player.firstPerson)) {
+  const disableOrbit =
+    (appMode === 'walk' && player.firstPerson) ||
+    appMode === 'coaster' ||
+    appMode === 'cannon';
+  if (!disableOrbit) {
     controls.update();
   }
   renderer.render(scene, camera);

@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 
 export const WATER_LEVEL = 1.32;
+export const WORLD_HALF_EXTENT = 64;
 
 export const PALETTE = {
   sandLight: 0xf4dc9c,
@@ -20,9 +21,16 @@ export const PALETTE = {
   lavaYellow: 0xffc83b,
   snow: 0xf4f8ff,
   snowShade: 0xdce7f5,
+  marble: 0xf3f5fa,
+  marbleTrim: 0xd8e0ee,
   woodLight: 0xc68b53,
   woodMid: 0x9c6638,
   woodDark: 0x6d4525,
+  pirateHull: 0x3b261d,
+  pirateBlack: 0x1e222b,
+  crystalCyan: 0x38f2ff,
+  crystalPurple: 0xb968ff,
+  crystalEmerald: 0x26f7a0,
   cobble: 0xb0b5ba,
   cobbleAlt: 0x99a0a8,
   wallCream: 0xf7eed8,
@@ -59,6 +67,7 @@ export const PALETTE = {
   legoYellow: 0xffd500,
   gold: 0xffc436,
   goldDark: 0xc98a18,
+  bounceRed: 0xff3b5c,
 };
 
 export const BUILD_SWATCHES = [
@@ -76,13 +85,33 @@ export const BUILD_SWATCHES = [
   { name: '发光金灯', hex: 0xffda6b, css: '#ffda6b', emissive: true },
 ];
 
+export const BUILD_PREFABS = [
+  { id: 'single', label: '🧱 单块积木' },
+  { id: 'palm', label: '🌴 棕榈树' },
+  { id: 'lamp', label: '🏮 发光路灯' },
+  { id: 'bounce', label: '🔺 弹跳蹦床' },
+  { id: 'pillar', label: '🏛️ 大理石柱' },
+];
+
+export const FISH_CATALOG = [
+  { id: 'clownfish', icon: '🐠', name: '热带小丑鱼', rarity: '普通', weight: 28, color: 0xff8c42 },
+  { id: 'puffer', icon: '🐡', name: '鼓气河豚', rarity: '普通', weight: 22, color: 0xffd166 },
+  { id: 'crab', icon: '🦀', name: '乐高红螃蟹', rarity: '稀有', weight: 16, color: 0xe63946 },
+  { id: 'jelly', icon: '🪼', name: '荧光深海水母', rarity: '稀有', weight: 12, color: 0x64ffda },
+  { id: 'turtle', icon: '🐢', name: '碧玉小海龟', rarity: '史诗', weight: 9, color: 0x38b000 },
+  { id: 'bottle', icon: '🍾', name: '海盗漂流瓶', rarity: '史诗', weight: 6, color: 0x4cc9f0 },
+  { id: 'shark', icon: '🦈', name: '迷你体素鲨鱼', rarity: '传说', weight: 4, color: 0x5c85a8 },
+  { id: 'crown', icon: '👑', name: '失落海王金冠', rarity: '神话', weight: 3, color: 0xffc436 },
+];
+
 export const CAMERA_PRESETS = {
-  overview:   { pos: [29, 23, 35],   target: [-0.8, 3.2, 0.4] },
+  overview:   { pos: [34, 28, 42],   target: [0, 4.0, 0] },
   village:    { pos: [4.5, 9.5, 19], target: [2.2, 3.5, 2.5] },
   lighthouse: { pos: [-26, 13, 16],  target: [-13.5, 7.2, 3.0] },
   waterfall:  { pos: [22, 16, 4.5],  target: [8.2, 4.2, -2.5] },
-  beach:      { pos: [-11, 7.5, 18], target: [-3.5, 2.5, 6.8] },
-  balloon:    { pos: [14, 24, 18],   target: [0, 14, 0] },
+  pirate:     { pos: [54, 18, 44],   target: [34, 4.5, 24] },
+  coaster:    { pos: [-56, 22, -4],  target: [-34, 7.0, -24] },
+  skytemple:  { pos: [18, 44, -18],  target: [0, 34, -36] },
 };
 
 export function hash2(x, z) {
