@@ -6,6 +6,7 @@ import { buildIslandWorld } from './worldBuilder.js';
 import { createLivingEntities } from './livingEntities.js';
 import { createAtmosphere } from './atmosphere.js';
 import { LegoBuildSystem } from './buildSystem.js';
+import { PlayerController } from './playerController.js';
 
 // =========================================================================
 // 1. RENDERER, SCENE, CAMERA & ORBIT CONTROLS
@@ -35,7 +36,7 @@ controls.enableDamping = true;
 controls.dampingFactor = 0.06;
 controls.maxPolarAngle = Math.PI * 0.478;
 controls.minPolarAngle = 0.14;
-controls.minDistance = 10;
+controls.minDistance = 4.2;
 controls.maxDistance = 85;
 controls.target.set(...CAMERA_PRESETS.overview.target);
 controls.autoRotate = true;
@@ -157,6 +158,26 @@ const buildSystem = new LegoBuildSystem(
 );
 updateBrickCounters(buildSystem.getCount());
 
+let foundChests = 0;
+const statChests = document.getElementById('stat-chests');
+
+function openTreasureChest(chest) {
+  if (!chest || chest.opened) return;
+  chest.opened = true;
+  foundChests++;
+  statChests.textContent = `💎 宝箱 ${foundChests}/5`;
+  audio.playTreasureFanfare();
+  spawnBurst(chest.worldPos, 48, 8.2, { singleColor: 0xffd23f });
+  if (foundChests === world.chests.length) {
+    showToast('🏆 恭喜找齐全部 5 个乐高秘宝！盛大烟花秀开启！');
+    for (let i = 0; i < 6; i++) setTimeout(launchSkyFirework, i * 320);
+  } else {
+    showToast(`💎 发现「${chest.name}」！（${foundChests}/5）`);
+  }
+}
+
+const player = new PlayerController(scene, world, buildSystem, audio, onWaterSplash, openTreasureChest);
+
 // =========================================================================
 // 3. CONTINUOUS ENVIRONMENTAL PARTICLES (Waterfall, Smoke, Campfire, Volcano Lava)
 // =========================================================================
@@ -222,16 +243,15 @@ let isPlayingTime = true;
 let weather = 'clear';      // clear | rain | storm | snow
 let volcanoMode = false;
 let auroraEnabled = true;
-let appMode = 'explore';    // explore | build | sail
+let appMode = 'explore';    // explore | walk | build | sail
 let snowAccumulation = 0;
 let lastAppliedSnow = 0;
-let foundChests = 0;
 
-const keys = { forward: false, backward: false, left: false, right: false };
+const keys = { forward: false, backward: false, left: false, right: false, sprint: false };
 
 let camAnim = null;
 function flyToPreset(name) {
-  if (appMode === 'sail') setAppMode('explore');
+  if (appMode === 'sail' || appMode === 'walk') setAppMode('explore');
   const p = CAMERA_PRESETS[name];
   if (!p) return;
 
@@ -261,25 +281,44 @@ controls.addEventListener('start', () => {
 });
 
 // =========================================================================
-// 5. MODE SWITCHING (Explore / Build / Sail)
+// 5. MODE SWITCHING (Explore / Walk / Build / Sail)
 // =========================================================================
+const walkBar = document.getElementById('walk-bar');
 const buildBar = document.getElementById('build-bar');
 const sailBar = document.getElementById('sail-bar');
 const statSpeed = document.getElementById('stat-speed');
-const statChests = document.getElementById('stat-chests');
+const statWalkState = document.getElementById('stat-walk-state');
+const btnWalkView = document.getElementById('btn-walk-view');
+
+function syncWalkViewButton() {
+  btnWalkView.textContent = player.firstPerson ? '🎥 第三人称' : '👁️ 第一人称';
+}
 
 function setAppMode(nextMode) {
+  const prevMode = appMode;
   appMode = nextMode;
   document.querySelectorAll('.mode-tab').forEach((btn) => {
     btn.classList.toggle('active', btn.dataset.mode === nextMode);
   });
 
+  if (prevMode === 'walk' && nextMode !== 'walk') {
+    player.exit(controls);
+  }
+
   buildSystem.setActive(nextMode === 'build');
+  walkBar.classList.toggle('hidden', nextMode !== 'walk');
   buildBar.classList.toggle('hidden', nextMode !== 'build');
   sailBar.classList.toggle('hidden', nextMode !== 'sail');
   container.classList.toggle('build-cursor', nextMode === 'build');
 
-  if (nextMode === 'build') {
+  if (nextMode === 'walk') {
+    controls.autoRotate = false;
+    document.getElementById('btn-rotate').classList.remove('active');
+    camAnim = null;
+    player.enter(camera, controls);
+    syncWalkViewButton();
+    showToast('🚶 已化身乐高探险家！WASD 移动，Space 跳跃，V 切换第一人称');
+  } else if (nextMode === 'build') {
     controls.autoRotate = false;
     document.getElementById('btn-rotate').classList.remove('active');
     showToast('🧱 拼装模式：左键点击积木面叠放，右键拆除，支持自动保存！');
@@ -312,6 +351,8 @@ BUILD_SWATCHES.forEach((sw, idx) => {
 const raycaster = new THREE.Raycaster();
 const pointer = new THREE.Vector2();
 let pointerDown = { x: 0, y: 0, button: 0 };
+let isDraggingFP = false;
+let lastDragPos = { x: 0, y: 0 };
 
 function updatePointer(e) {
   pointer.x = (e.clientX / window.innerWidth) * 2 - 1;
@@ -320,6 +361,11 @@ function updatePointer(e) {
 }
 
 renderer.domElement.addEventListener('pointermove', (e) => {
+  if (appMode === 'walk' && player.firstPerson && isDraggingFP) {
+    player.rotateFirstPerson(e.clientX - lastDragPos.x, e.clientY - lastDragPos.y);
+    lastDragPos = { x: e.clientX, y: e.clientY };
+    return;
+  }
   if (appMode === 'build') {
     updatePointer(e);
     buildSystem.updateHover(raycaster);
@@ -328,6 +374,14 @@ renderer.domElement.addEventListener('pointermove', (e) => {
 
 renderer.domElement.addEventListener('pointerdown', (e) => {
   pointerDown = { x: e.clientX, y: e.clientY, button: e.button };
+  if (appMode === 'walk' && player.firstPerson && e.button === 0) {
+    isDraggingFP = true;
+    lastDragPos = { x: e.clientX, y: e.clientY };
+  }
+});
+
+window.addEventListener('pointerup', () => {
+  isDraggingFP = false;
 });
 
 renderer.domElement.addEventListener('contextmenu', (e) => {
@@ -358,17 +412,7 @@ renderer.domElement.addEventListener('pointerup', (e) => {
     const idx = chestHits[0].object.userData.chestIndex;
     const chest = world.chests[idx];
     if (chest && !chest.opened) {
-      chest.opened = true;
-      foundChests++;
-      statChests.textContent = `💎 宝箱 ${foundChests}/5`;
-      audio.playTreasureFanfare();
-      spawnBurst(chest.worldPos, 48, 8.2, { singleColor: 0xffd23f });
-      if (foundChests === world.chests.length) {
-        showToast(`🏆 恭喜找齐全部 5 个乐高秘宝！盛大烟花秀开启！`);
-        for (let i = 0; i < 6; i++) setTimeout(launchSkyFirework, i * 320);
-      } else {
-        showToast(`💎 发现「${chest.name}」！（${foundChests}/5）`);
-      }
+      openTreasureChest(chest);
       return;
     }
   }
@@ -384,15 +428,27 @@ renderer.domElement.addEventListener('pointerup', (e) => {
   }
 });
 
-// Keyboard shortcuts (WASD Sail Mode + Space Horn + Ctrl+Z Undo)
+// Keyboard shortcuts (WASD Walk/Sail + Space Jump/Horn + V Perspective + Shift Sprint + Ctrl+Z Undo)
 window.addEventListener('keydown', (e) => {
   if (e.code === 'KeyW' || e.code === 'ArrowUp') keys.forward = true;
   if (e.code === 'KeyS' || e.code === 'ArrowDown') keys.backward = true;
   if (e.code === 'KeyA' || e.code === 'ArrowLeft') keys.left = true;
   if (e.code === 'KeyD' || e.code === 'ArrowRight') keys.right = true;
-  if (e.code === 'Space' && appMode === 'sail') {
-    e.preventDefault();
-    triggerBoatHorn();
+  if (e.code === 'ShiftLeft' || e.code === 'ShiftRight') keys.sprint = true;
+
+  if (e.code === 'Space') {
+    if (appMode === 'walk') {
+      e.preventDefault();
+      player.jump();
+    } else if (appMode === 'sail') {
+      e.preventDefault();
+      triggerBoatHorn();
+    }
+  }
+  if (e.code === 'KeyV' && appMode === 'walk') {
+    const fp = player.togglePerspective(camera, controls);
+    syncWalkViewButton();
+    showToast(fp ? '👁️ 已切换为第一人称视角（按住左键拖拽环顾四周）' : '🎥 已切换为第三人称追尾视角');
   }
   if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z' && appMode === 'build') {
     e.preventDefault();
@@ -405,6 +461,7 @@ window.addEventListener('keyup', (e) => {
   if (e.code === 'KeyS' || e.code === 'ArrowDown') keys.backward = false;
   if (e.code === 'KeyA' || e.code === 'ArrowLeft') keys.left = false;
   if (e.code === 'KeyD' || e.code === 'ArrowRight') keys.right = false;
+  if (e.code === 'ShiftLeft' || e.code === 'ShiftRight') keys.sprint = false;
 });
 
 function triggerBoatHorn() {
@@ -562,6 +619,33 @@ document.getElementById('btn-sail-exit').addEventListener('click', () => {
   flyToPreset('overview');
 });
 
+btnWalkView.addEventListener('click', () => {
+  if (appMode !== 'walk') return;
+  const fp = player.togglePerspective(camera, controls);
+  syncWalkViewButton();
+  showToast(fp ? '👁️ 第一人称视角（左键拖拽环顾四周）' : '🎥 第三人称追尾视角');
+});
+
+document.getElementById('btn-walk-exit').addEventListener('click', () => {
+  setAppMode('explore');
+  flyToPreset('overview');
+});
+
+document.getElementById('btn-walk-respawn').addEventListener('click', () => {
+  player.pos.set(2.5, 3.0, 4.5);
+  player.visualY = 3.0;
+  player.velY = 0;
+  if (appMode === 'walk') player.enter(camera, controls);
+  showToast('🏠 已回到港口小镇广场');
+});
+
+document.querySelectorAll('#walk-outfits [data-outfit]').forEach((btn) => {
+  btn.addEventListener('click', () => {
+    player.setOutfit(btn.dataset.outfit);
+    document.querySelectorAll('#walk-outfits [data-outfit]').forEach((b) => b.classList.toggle('active', b === btn));
+  });
+});
+
 window.addEventListener('resize', () => {
   camera.aspect = window.innerWidth / window.innerHeight;
   camera.updateProjectionMatrix();
@@ -611,6 +695,14 @@ function animate() {
   const nightFactor = atmosphere.update(dt, elapsed, { timeOfDay, weather, auroraEnabled, volcanoMode });
   audio.updateAmbient(dt, weather, nightFactor);
   entities.update(dt, elapsed, { nightFactor, weather, sailMode: appMode === 'sail', keys });
+
+  // Walk Mode character update & live terrain/swim indicator
+  if (appMode === 'walk') {
+    player.update(dt, elapsed, { keys, camera, controls, nightFactor });
+    statWalkState.textContent = player.swimming
+      ? '🏊 海中畅游'
+      : `🥾 海拔 ${Math.max(0, Math.round(player.pos.y - 1))}m`;
+  }
 
   // Sail mode third-person chase camera
   if (appMode === 'sail') {
@@ -747,7 +839,9 @@ function animate() {
     if (t >= 1) camAnim = null;
   }
 
-  controls.update();
+  if (!(appMode === 'walk' && player.firstPerson)) {
+    controls.update();
+  }
   renderer.render(scene, camera);
 }
 

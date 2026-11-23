@@ -54,6 +54,7 @@
       <!-- Mode Switcher Tabs -->
       <div class="mode-tabs">
         <button class="mode-tab active" data-mode="explore">🧭 自由漫游</button>
+        <button class="mode-tab" data-mode="walk">🚶 岛上漫步</button>
         <button class="mode-tab" data-mode="build">🧱 拼装积木</button>
         <button class="mode-tab" data-mode="sail">⛵ 亲自开船</button>
       </div>
@@ -69,6 +70,25 @@
       <button class="icon-btn active hud-hideable" id="btn-studs" title="开关乐高凸点">⚪ <span class="label">凸点</span></button>
       <button class="icon-btn active hud-hideable" id="btn-rotate" title="自动缓慢环绕">🔄 <span class="label">环绕</span></button>
       <button class="icon-btn" id="btn-zen" title="纯净视角（隐藏界面）">👁️ <span class="label">纯净</span></button>
+    </div>
+
+    <!-- Contextual Bar: Walk Mode Controls -->
+    <div class="glass-panel context-bar hud-hideable hidden" id="walk-bar">
+      <div class="context-header">
+        <span class="context-title">🚶 漫步模式：<kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> 移动 · <kbd>Shift</kbd> 冲刺 · <kbd>Space</kbd> 跳跃 · <kbd>V</kbd> 切换视角 · 拖拽转镜头</span>
+        <div class="context-actions">
+          <span class="pill" id="stat-walk-state">🥾 陆地漫步</span>
+          <button class="mini-btn" id="btn-walk-view" title="切换第一/第三人称 (V)">👁️ 第一人称</button>
+          <button class="mini-btn" id="btn-walk-exit">退出漫步</button>
+        </div>
+      </div>
+      <div class="outfit-row" id="walk-outfits">
+        <span class="context-title">换装：</span>
+        <button class="chip-btn active" data-outfit="explorer">🧭 探险家</button>
+        <button class="chip-btn" data-outfit="pirate">🏴‍☠️ 海盗船长</button>
+        <button class="chip-btn" data-outfit="astronaut">👨‍🚀 宇航员</button>
+        <button class="mini-btn" id="btn-walk-respawn" title="回到港口广场">🏠 回广场</button>
+      </div>
     </div>
 
     <!-- Contextual Bar: Build Mode Brick Palette -->

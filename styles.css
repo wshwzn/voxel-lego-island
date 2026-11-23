@@ -120,7 +120,7 @@ html, body {
 /* Toasts */
 #toast-container {
   position: fixed;
-  top: 72px;
+  top: 122px;
   left: 50%;
   transform: translateX(-50%);
   z-index: 80;
@@ -247,11 +247,18 @@ html, body {
 /* Mode Switcher */
 .mode-tabs {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 5px;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 4px;
   background: rgba(0, 0, 0, 0.24);
   padding: 4px;
   border-radius: 11px;
+}
+
+.outfit-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
 }
 
 .mode-tab {
